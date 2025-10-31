@@ -6,10 +6,7 @@
     <title>Sanchez's Sport Bar - Cuentas</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- jsPDF (para generar PDF) - AÑADIDO 'defer' -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
-    <!-- jsPDF AutoTable plugin (para tablas en PDF) - AÑADIDO 'defer' -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
+    <!-- CAMBIO: Quitar los scripts del PDF de aquí. Se cargarán dinámicamente. -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -60,6 +57,15 @@
             <div>
                 <label for="product-quantity" class="block text-sm font-medium text-gray-300 mb-1">Cantidad</label>
                 <input type="number" id="product-quantity" value="1" min="1" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+            </div>
+
+            <!-- Atajo para seleccionar mesa activa -->
+            <div>
+                <label for="active-table-select" class="block text-sm font-medium text-gray-300 mb-1">Atajo (Mesa Activa)</label>
+                <select id="active-table-select" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2 text-base focus:ring-cyan-500 focus:border-cyan-500">
+                    <option value="">-- Seleccione una mesa --</option>
+                    <!-- Opciones se generan dinámicamente -->
+                </select>
             </div>
 
             <!-- Indicador de Mesa Activa -->
@@ -202,6 +208,30 @@
         </div>
     </div>
 
+    <!-- Modal de Confirmación -->
+    <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden"> <!-- z-50 para estar sobre otros modales si es necesario -->
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-sm">
+            <!-- Cabecera del Modal -->
+            <div class="p-4 border-b border-gray-700">
+                <h3 id="confirmation-title" class="text-xl font-semibold text-white">Confirmar Acción</h3>
+            </div>
+            <!-- Mensaje de Confirmación -->
+            <div class="p-6">
+                <p id="confirmation-message" class="text-gray-300">¿Está seguro?</p>
+            </div>
+            <!-- Pie del Modal (Botones) -->
+            <div class="p-4 bg-gray-900 rounded-b-lg flex justify-end gap-4">
+                <button id="confirmation-cancel-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                    Cancelar
+                </button>
+                <button id="confirmation-ok-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                    Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+
+
     <!-- Firebase SDKs -->
     <script type="module">
         // IMPORTANTE: Se importa setLogLevel desde 'app'
@@ -270,7 +300,7 @@
             
             // RTD (Listos)
             { category: "RTD (Listos)", name: "Cuates", price: 6000 },
-            { category: "RTD (Listos)", name: "Like", price: 4500 },
+            { category:"RTD (Listos)", name: "Like", price: 4500 },
             { category: "RTD (Listos)", name: "Smirnoff Ice", price: 10000 },
             { category: "RTD (Listos)", name: "Reds", price: 4500 },
 
@@ -305,7 +335,8 @@
 
             // Otros
             { category: "Otros", name: "Mustang", price: 1100 },
-            { category: "Otros", name: "Lucky", price: 1300 },
+            { category: "Otros", name: "Lucky", price: 1300 }, 
+            { category: "Otros", name: "Otros", price: 0 }, // <-- CAMBIO: Añadido "Otros"
 
             // Descuento
             { category: "Descuento", name: "Descuento", price: 0 } // Precio 0, se usa la cantidad
@@ -329,6 +360,13 @@
         
         // Almacén para los IDs de los documentos filtrados en auditoría
         let currentAuditFilteredIds = [];
+        
+        // Variable para manejar la acción de confirmación
+        let onConfirmAction = null;
+        
+        // CAMBIO: Variable para rastrear la carga de scripts PDF
+        let pdfScriptsLoaded = false;
+        let isPdfLoading = false; // Para evitar clics múltiples
 
         // --- 3. INICIALIZACIÓN DE FIREBASE ---
         async function initializeFirebase() {
@@ -389,6 +427,12 @@
             setupZoomModal();
             setupAuditModal(); // Configurar el nuevo modal de auditoría
             setupReadOnlyHistoryModal();
+            setupConfirmationModal(); // Configurar modal de confirmación
+            
+            // Configurar el listener para el nuevo atajo
+            document.getElementById('active-table-select').addEventListener('change', (e) => {
+                setActiveTable(e.target.value);
+            });
         }
 
         // Carga la lista de productos en el <select>
@@ -411,12 +455,14 @@
                 categories[categoryName].forEach(product => {
                     const option = document.createElement('option');
                     option.value = product.name;
-                    // Lógica para mostrar precio
-                    if (product.name === 'Descuento') {
+                    
+                    // CAMBIO: Lógica para mostrar precio (ahora incluye "Otros")
+                    if (product.name === 'Descuento' || product.name === 'Otros') {
                         option.textContent = `${product.name} (manual)`;
                     } else {
                         option.textContent = `${product.name} - ${formatCurrency(product.price)}`;
                     }
+                    
                     // Guardamos el precio y nombre en el dataset para fácil acceso
                     option.dataset.price = product.price;
                     option.dataset.name = product.name;
@@ -553,6 +599,9 @@
                 // Restauramos el scroll
                 tablesGrid.scrollTop = scrollPos;
 
+                // Actualizar el atajo
+                updateActiveTableSelect(activeTableId);
+
                 // Si la mesa activa ya no existe, la deseleccionamos
                 if (activeTableId && !allTablesData.has(activeTableId)) {
                     setActiveTable(null);
@@ -562,6 +611,29 @@
                 console.error("Error en el listener de onSnapshot:", error);
                 showStatusMessage("Error al sincronizar mesas. Revisa la consola.", true);
             });
+        }
+        
+        // Actualiza el menú desplegable del atajo
+        function updateActiveTableSelect(currentActiveId) {
+            const select = document.getElementById('active-table-select');
+            
+            // Guardamos las opciones existentes (solo la primera)
+            const firstOption = select.options[0];
+            select.innerHTML = ''; // Limpiamos todo
+            select.appendChild(firstOption); // Volvemos a añadir la primera
+
+            // Ordenar mesas alfabéticamente
+            const sortedTables = [...allTablesData.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+            sortedTables.forEach(table => {
+                const option = document.createElement('option');
+                option.value = table.id;
+                option.textContent = table.name;
+                select.appendChild(option);
+            });
+            
+            // Reseleccionar la mesa activa
+            select.value = currentActiveId || "";
         }
         
         // Crea el HTML de una tarjeta de mesa
@@ -618,14 +690,19 @@
                 for (const name in groupedItems) {
                     const item = groupedItems[name];
                     const isDiscount = item.price < 0;
+                    const isOther = item.price > 0 && (name === 'Otros'); // Identificar "Otros"
                     
+                    let textColor = 'text-gray-300';
+                    if (isDiscount) textColor = 'text-red-400';
+                    if (isOther) textColor = 'text-yellow-400'; // Darle un color distinto a "Otros"
+
                     itemsHtml += `
-                        <li class="flex justify-between items-center text-sm py-1 ${isDiscount ? 'text-red-400' : 'text-gray-300'}">
+                        <li class="flex justify-between items-center text-sm py-1 ${textColor}">
                             <span>
                                 ${name} 
-                                <span class="font-medium ${isDiscount ? 'text-red-300' : 'text-white'}">x ${item.quantity}</span>
+                                <span class="font-medium ${textColor === 'text-gray-300' ? 'text-white' : ''}">${name !== 'Otros' ? 'x ' + item.quantity : ''}</span>
                             </span>
-                            <span class="font-semibold ${isDiscount ? 'text-red-300' : 'text-white'}">
+                            <span class="font-semibold ${textColor === 'text-gray-300' ? 'text-white' : ''}">
                                 ${formatCurrency(item.totalPrice)}
                                 
                                 <!-- Botón "x" para eliminar el grupo completo -->
@@ -675,39 +752,35 @@
                 if (freshTable) showHistory(freshTable);
             });
 
-            // Botón Factura (PDF)
-            cardElement.querySelector('.btn-pdf').addEventListener('click', () => {
+            // Botón Factura (PDF) - CAMBIO: Carga dinámica
+            cardElement.querySelector('.btn-pdf').addEventListener('click', async () => { // async
                 const freshTable = allTablesData.get(table.id);
                 if (freshTable) {
                     if (freshTable.items.length === 0) {
                         showStatusMessage("No se puede facturar una mesa vacía.", true);
                         return;
                     }
+                    
+                    if (isPdfLoading) {
+                        showStatusMessage("Cargando PDF, un momento...", false);
+                        return;
+                    }
+                    
                     try {
-                        // *** INICIO DE LA CORRECCIÓN ***
-                        // Comprobar si las librerías están cargadas de forma más robusta
-                        const { jsPDF } = (typeof window.jspdf !== 'undefined') ? window.jspdf : {};
-                        if (typeof jsPDF === 'undefined') {
-                            console.warn("jsPDF no está listo, reintentando en 100ms...");
-                            showStatusMessage("Preparando PDF, un momento...", false);
-                            setTimeout(() => cardElement.querySelector('.btn-pdf').click(), 100);
+                        // Asegurarse de que los scripts estén cargados
+                        const scriptsReady = await ensurePdfScripts(); 
+                        if (!scriptsReady) {
+                            showStatusMessage("Error al cargar librerías PDF. Intente de nuevo.", true);
                             return;
                         }
                         
-                        const testDoc = new jsPDF();
-                        if (typeof testDoc.autoTable === 'undefined') {
-                            console.warn("jsPDF-AutoTable no está listo, reintentando en 100ms...");
-                            showStatusMessage("Preparando tablas PDF...", false);
-                            setTimeout(() => cardElement.querySelector('.btn-pdf').click(), 100);
-                            return;
-                        }
-                        // *** FIN DE LA CORRECCIÓN ***
-
-                        generatePDF(freshTable);
+                        // Ahora es seguro llamar a generatePDF
+                        generatePDF(freshTable); 
                         showStatusMessage("Factura PDF generada.", false);
+                        
                     } catch (pdfError) {
                         console.error("Error al generar PDF:", pdfError);
-                        showStatusMessage(`Error al crear PDF.`, true);
+                        showStatusMessage(`Error al crear PDF: ${pdfError.message}`, true);
                     }
                 }
             });
@@ -745,8 +818,18 @@
                         totalPrice: 0
                     };
                 }
-                grouped[item.name].quantity += 1; // Cada item es 1 unidad
-                grouped[item.name].totalPrice += item.price;
+                // CAMBIO: Para "Otros", la cantidad es el precio y el precio es 1
+                if(item.name === 'Otros') {
+                    grouped[item.name].quantity = 1; // Siempre es 1 solo item
+                    grouped[item.name].totalPrice += item.price; // Sumamos el precio
+                } else if (item.name === 'Descuento') {
+                    grouped[item.name].quantity = 1; // Siempre es 1 solo item
+                    grouped[item.name].totalPrice += item.price; // Sumamos el precio (negativo)
+                }
+                else {
+                    grouped[item.name].quantity += 1; // Cada item es 1 unidad
+                    grouped[item.name].totalPrice += item.price;
+                }
             });
             return grouped;
         }
@@ -776,7 +859,7 @@
                     
                     const tableDocRef = doc(tablesCollectionRef, activeTableId);
                     
-                    // Lógica para Descuento
+                    // CAMBIO: Lógica de Descuento y Otros
                     if (productName === 'Descuento') {
                         const discountAmount = parseFloat(quantityInput.value); // Usamos el valor tal cual
                         if (isNaN(discountAmount) || discountAmount <= 0) {
@@ -798,6 +881,27 @@
                         
                         showStatusMessage(`Descuento de ${formatCurrency(discountAmount)} aplicado.`, false);
 
+                    } else if (productName === 'Otros') { // <-- CAMBIO: Añadido bloque "Otros"
+                        const additionalAmount = parseFloat(quantityInput.value);
+                        if (isNaN(additionalAmount) || additionalAmount <= 0) {
+                            showStatusMessage("El monto a añadir debe ser positivo.", true);
+                            return;
+                        }
+
+                        const newItem = {
+                            id: `item-${Date.now()}`,
+                            name: 'Otros',
+                            price: additionalAmount, // Guardamos como POSITIVO
+                            timestamp: new Date().toISOString()
+                        };
+
+                        await updateDoc(tableDocRef, {
+                            items: arrayUnion(newItem),
+                            total: increment(additionalAmount) // SUMAMOS al total
+                        });
+                        
+                        showStatusMessage(`Cargo "Otros" de ${formatCurrency(additionalAmount)} aplicado.`, false);
+                    
                     } else {
                         // Lógica para productos normales
                         let itemsToAdd = [];
@@ -864,15 +968,21 @@
                     : 'Hora desconocida';
                 
                 const isDiscount = item.price < 0;
+                const isOther = item.price > 0 && (item.name === 'Otros'); // Identificar "Otros"
                 
+                let textColor = 'text-white';
+                if (isDiscount) textColor = 'text-red-300';
+                if (isOther) textColor = 'text-yellow-300';
+
+
                 html += `
                     <li class="flex justify-between items-center py-3">
                         <div>
-                            <span class="font-semibold ${isDiscount ? 'text-red-300' : 'text-white'}">${item.name}</span>
+                            <span class="font-semibold ${textColor}">${item.name}</span>
                             <span class="block text-sm text-gray-400">${itemTime}</span>
                         </div>
                         <div class="flex items-center">
-                            <span class="font-semibold text-lg mr-4 ${isDiscount ? 'text-red-300' : 'text-white'}">${formatCurrency(item.price)}</span>
+                            <span class="font-semibold text-lg mr-4 ${textColor}">${formatCurrency(item.price)}</span>
                             
                             <!-- Botón "x" para eliminar item individual -->
                             <button data-item-id="${item.id}" 
@@ -931,16 +1041,22 @@
                 const itemTime = item.timestamp 
                     ? new Date(item.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     : 'Hora desconocida';
+                
                 const isDiscount = item.price < 0;
+                const isOther = item.price > 0 && (item.name === 'Otros'); // Identificar "Otros"
+                
+                let textColor = 'text-white';
+                if (isDiscount) textColor = 'text-red-300';
+                if (isOther) textColor = 'text-yellow-300';
                 
                 html += `
                     <li class="flex justify-between items-center py-3">
                         <div>
-                            <span class="font-semibold ${isDiscount ? 'text-red-300' : 'text-white'}">${item.name}</span>
+                            <span class="font-semibold ${textColor}">${item.name}</span>
                             <span class="block text-sm text-gray-400">${itemTime}</span>
                         </div>
                         <div class="flex items-center">
-                            <span class="font-semibold text-lg mr-4 ${isDiscount ? 'text-red-300' : 'text-white'}">${formatCurrency(item.price)}</span>
+                            <span class="font-semibold text-lg mr-4 ${textColor}">${formatCurrency(item.price)}</span>
                             <!-- Sin botón de eliminar -->
                         </div>
                     </li>
@@ -978,14 +1094,19 @@
             for (const name in groupedItems) {
                 const item = groupedItems[name];
                 const isDiscount = item.price < 0;
+                const isOther = item.price > 0 && (name === 'Otros');
                 
+                let textColor = 'text-white';
+                if (isDiscount) textColor = 'text-red-300';
+                if (isOther) textColor = 'text-yellow-300';
+
                 html += `
                     <li class="flex justify-between items-center py-3">
-                        <span class="text-lg ${isDiscount ? 'text-red-300' : 'text-white'}">
+                        <span class="text-lg ${textColor}">
                             ${name} 
-                            <span class="font-medium">x ${item.quantity}</span>
+                            <span class="font-medium">${name !== 'Otros' ? 'x ' + item.quantity : ''}</span>
                         </span>
-                        <span class="font-semibold text-xl ${isDiscount ? 'text-red-300' : 'text-white'}">
+                        <span class="font-semibold text-xl ${textColor}">
                             ${formatCurrency(item.totalPrice)}
                         </span>
                     </li>
@@ -1028,6 +1149,44 @@
             
             // Botón Borrar Todo (Filtro)
             deleteAllBtn.addEventListener('click', handleDeleteAllFiltered);
+        }
+
+        // Configura el modal de confirmación
+        function setupConfirmationModal() {
+            const modal = document.getElementById('confirmation-modal');
+            const cancelBtn = document.getElementById('confirmation-cancel-btn');
+            const okBtn = document.getElementById('confirmation-ok-btn');
+
+            // Botón de Cancelar
+            cancelBtn.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                onConfirmAction = null; // Limpiar la acción
+            });
+
+            // Botón de Confirmar
+            okBtn.addEventListener('click', () => {
+                if (typeof onConfirmAction === 'function') {
+                    onConfirmAction(); // Ejecutar la acción guardada
+                }
+                modal.classList.add('hidden'); // Ocultar modal
+                onConfirmAction = null; // Limpiar la acción
+            });
+        }
+
+        /**
+         * Muestra el modal de confirmación
+         * @param {string} title - El título del modal
+         * @param {string} message - El mensaje de confirmación
+         * @param {function} onConfirm - La función a ejecutar si se confirma
+         */
+        function showConfirmationModal(title, message, onConfirm) {
+            const modal = document.getElementById('confirmation-modal');
+            document.getElementById('confirmation-title').textContent = title;
+            document.getElementById('confirmation-message').textContent = message;
+            
+            onConfirmAction = onConfirm; // Guardar la acción a ejecutar
+            
+            modal.classList.remove('hidden'); // Mostrar el modal
         }
         
         // Busca y muestra las mesas cerradas
@@ -1087,9 +1246,17 @@
                     let itemsDetailHtml = '';
                     for (const name in groupedItems) {
                         const item = groupedItems[name];
+                        
+                        const isDiscount = item.price < 0;
+                        const isOther = item.price > 0 && (name === 'Otros');
+                        
+                        let textColor = 'text-gray-400';
+                        if (isDiscount) textColor = 'text-red-400';
+                        if (isOther) textColor = 'text-yellow-400';
+                        
                         itemsDetailHtml += `
-                            <li class="flex justify-between text-sm ${item.price < 0 ? 'text-red-400' : 'text-gray-400'}">
-                                <span>${name} x ${item.quantity}</span>
+                            <li class="flex justify-between text-sm ${textColor}">
+                                <span>${name} ${name !== 'Otros' ? 'x ' + item.quantity : ''}</span>
                                 <span>${formatCurrency(item.totalPrice)}</span>
                             </li>
                         `;
@@ -1154,6 +1321,7 @@
                     btn.addEventListener('click', () => {
                         const docId = btn.dataset.tableId;
                         const tableName = btn.dataset.tableName;
+                        // Usar el modal de confirmación
                         handleDeleteClosedTable(docId, tableName);
                     });
                 });
@@ -1199,6 +1367,19 @@
         // Elimina un grupo completo de items (desde la tarjeta)
         async function handleDeleteGroup(table, itemName) {
             
+            // CAMBIO: Para "Otros" y "Descuento", no podemos borrar por nombre.
+            // Usar el modal de confirmación para esta acción.
+            if (itemName === 'Otros' || itemName === 'Descuento') {
+                showConfirmationModal(
+                    `Confirmar Borrado`,
+                    `Para borrar un item "${itemName}", debe hacerlo desde el "Historial".\n\n¿Desea abrir el historial ahora?`,
+                    () => {
+                        showHistory(table);
+                    }
+                );
+                return;
+            }
+            
             const itemsToKeep = table.items.filter(item => item.name !== itemName);
             const newTotal = itemsToKeep.reduce((sum, item) => sum + item.price, 0);
 
@@ -1219,122 +1400,179 @@
         }
         
         // Cierra la mesa (SIN PDF) y la mueve a "closedTables"
-        async function handleCloseTable(table) {
+        function handleCloseTable(table) {
+            
+            let title = `Cerrar Mesa "${table.name}"`;
+            let message = `¿Desea CERRAR la mesa "${table.name}"?\nTotal: ${formatCurrency(table.total)}`;
             
             if (table.items.length === 0) {
-                if (!confirm(`La mesa "${table.name}" está vacía.\n¿Desea cerrarla de todas formas?`)) {
-                    return;
-                }
-            } else {
-                 if (!confirm(`¿Desea CERRAR la mesa "${table.name}"?\n\nTotal: ${formatCurrency(table.total)}`)) {
-                    return;
-                }
+                message = `La mesa "${table.name}" está vacía.\n¿Desea cerrarla de todas formas?`;
             }
 
-            // 1. Mover a "closedTables"
-            try {
-                // Creamos un nuevo documento en "closedTables"
-                const closedDocRef = doc(closedTablesCollectionRef, `${table.id}-${Date.now()}`); // ID único
-                await setDoc(closedDocRef, {
-                    ...table, // Copiamos todos los datos
-                    status: 'closed',
-                    closedAt: new Date().toISOString()
-                });
-                
-                // 2. Eliminar de "tables" (abiertas)
-                const tableDocRef = doc(tablesCollectionRef, table.id);
-                await deleteDoc(tableDocRef);
-                
-                showStatusMessage(`Mesa "${table.name}" cerrada.`, false);
+            // Usar el modal de confirmación en lugar de confirm()
+            showConfirmationModal(title, message, async () => {
+                // Esta es la acción que se ejecuta al confirmar
+                try {
+                    // 1. Mover a "closedTables"
+                    const closedDocRef = doc(closedTablesCollectionRef, `${table.id}-${Date.now()}`); // ID único
+                    await setDoc(closedDocRef, {
+                        ...table, // Copiamos todos los datos
+                        status: 'closed',
+                        closedAt: new Date().toISOString()
+                    });
+                    
+                    // 2. Eliminar de "tables" (abiertas)
+                    const tableDocRef = doc(tablesCollectionRef, table.id);
+                    await deleteDoc(tableDocRef);
+                    
+                    showStatusMessage(`Mesa "${table.name}" cerrada.`, false);
 
-            } catch (dbError) {
-                console.error("Error al cerrar la mesa en DB:", dbError);
-                showStatusMessage(`Error al cerrar la mesa en la base de datos.`, true);
-            }
+                } catch (dbError) {
+                    console.error("Error al cerrar la mesa en DB:", dbError);
+                    showStatusMessage(`Error al cerrar la mesa en la base de datos.`, true);
+                }
+            });
         }
         
         // Borra una mesa individual de la auditoría
-        async function handleDeleteClosedTable(docId, tableName) {
-            if (!confirm(`¿Está seguro que desea BORRAR PERMANENTEMENTE el registro de la mesa "${tableName}"?\n\nEsta acción no se puede deshacer.`)) {
-                return;
-            }
+        function handleDeleteClosedTable(docId, tableName) {
             
-            try {
-                const docRef = doc(closedTablesCollectionRef, docId);
-                await deleteDoc(docRef);
-                
-                showStatusMessage(`Mesa "${tableName}" borrada de la auditoría.`, false);
-                
-                // Opcional: remover el elemento de la UI sin recargar
-                const itemEl = document.getElementById(`audit-item-${docId}`);
-                if (itemEl) {
-                    itemEl.remove();
-                }
-                
-                // Recargar la auditoría para que el total se actualice
-                fetchClosedTables();
+            const title = `Borrar Registro`;
+            const message = `¿Está seguro que desea BORRAR PERMANENTEMENTE el registro de la mesa "${tableName}"?\n\nEsta acción no se puede deshacer.`;
 
-            } catch (error) {
-                console.error("Error al borrar mesa de auditoría:", error);
-                showStatusMessage("Error al borrar registro.", true);
-            }
+            // Usar el modal de confirmación
+            showConfirmationModal(title, message, async () => {
+                // Acción al confirmar
+                try {
+                    const docRef = doc(closedTablesCollectionRef, docId);
+                    await deleteDoc(docRef);
+                    
+                    showStatusMessage(`Mesa "${tableName}" borrada de la auditoría.`, false);
+                    
+                    // Opcional: remover el elemento de la UI sin recargar
+                    const itemEl = document.getElementById(`audit-item-${docId}`);
+                    if (itemEl) {
+                        itemEl.remove();
+                    }
+                    
+                    // Recargar la auditoría para que el total se actualice
+                    fetchClosedTables();
+
+                } catch (error) {
+                    console.error("Error al borrar mesa de auditoría:", error);
+                    showStatusMessage("Error al borrar registro.", true);
+                }
+            });
         }
         
         // Borra todas las mesas que coinciden con el filtro
-        async function handleDeleteAllFiltered() {
+        function handleDeleteAllFiltered() {
             if (currentAuditFilteredIds.length === 0) {
                 showStatusMessage("No hay mesas en el filtro actual para borrar.", true);
                 return;
             }
             
-            if (!confirm(`¿Está seguro que desea BORRAR PERMANENTEMENTE los ${currentAuditFilteredIds.length} registros que coinciden con el filtro?\n\nEsta acción no se puede deshacer.`)) {
-                return;
+            const title = `Borrar ${currentAuditFilteredIds.length} Registros`;
+            const message = `¿Está seguro que desea BORRAR PERMANENTEMENTE los ${currentAuditFilteredIds.length} registros que coinciden con el filtro?\n\nEsta acción no se puede deshacer.`;
+
+            // Usar el modal de confirmación
+            showConfirmationModal(title, message, async () => {
+                // Acción al confirmar
+                try {
+                    // Usamos un "batch write" para borrar todos los documentos en una sola operación
+                    const batch = writeBatch(db);
+                    
+                    currentAuditFilteredIds.forEach(docId => {
+                        const docRef = doc(closedTablesCollectionRef, docId);
+                        batch.delete(docRef);
+                    });
+                    
+                    await batch.commit();
+                    
+                    showStatusMessage(`${currentAuditFilteredIds.length} registros borrados.`, false);
+                    
+                    // Recargamos la lista de auditoría
+                    fetchClosedTables();
+
+                } catch (error) {
+                    console.error("Error en borrado múltiple:", error);
+                    showStatusMessage("Error al borrar los registros.", true);
+                }
+            });
+        }
+
+        // CAMBIO: Nueva función para cargar scripts dinámicamente
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                // Evitar cargar el mismo script dos veces
+                if (document.querySelector(`script[src="${src}"]`)) {
+                    resolve();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error(`Falló al cargar el script: ${src}`));
+                document.head.appendChild(script);
+            });
+        }
+        
+        // CAMBIO: Nueva función para asegurar que los scripts del PDF estén cargados
+        async function ensurePdfScripts() {
+            if (pdfScriptsLoaded) {
+                return true; // Ya están cargados
             }
-
+            
+            if (isPdfLoading) {
+                showStatusMessage("Cargando librerías PDF...", false);
+                return false; // Ya está en proceso
+            }
+            
+            isPdfLoading = true;
+            showStatusMessage("Cargando librerías PDF...", false);
+            
             try {
-                // Usamos un "batch write" para borrar todos los documentos en una sola operación
-                const batch = writeBatch(db);
+                // Cargar jspdf primero
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+                console.log("jsPDF cargado.");
                 
-                currentAuditFilteredIds.forEach(docId => {
-                    const docRef = doc(closedTablesCollectionRef, docId);
-                    batch.delete(docRef);
-                });
+                // Cargar autotable después
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+                console.log("jsPDF-AutoTable cargado.");
                 
-                await batch.commit();
+                pdfScriptsLoaded = true;
+                isPdfLoading = false;
+                showStatusMessage("Librerías PDF listas.", false);
+                return true;
                 
-                showStatusMessage(`${currentAuditFilteredIds.length} registros borrados.`, false);
-                
-                // Recargamos la lista de auditoría
-                fetchClosedTables();
-
             } catch (error) {
-                console.error("Error en borrado múltiple:", error);
-                showStatusMessage("Error al borrar los registros.", true);
+                console.error(error);
+                showStatusMessage(error.message, true);
+                pdfScriptsLoaded = false; // Permitir reintentar
+                isPdfLoading = false;
+                return false;
             }
         }
 
         // Genera el PDF
         function generatePDF(table) {
-            // Asegurarse que las librerías están cargadas
+            // Asegurarse que las librerías están cargadas en el objeto window
             if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
-                console.error("jsPDF no está cargado.");
+                console.error("jsPDF no está cargado en window.");
                 showStatusMessage("Error: Librería PDF no cargada.", true);
-                return;
+                return; // Salir si jsPDF no existe
             }
             
+            // CORRECCIÓN: Instanciar jsPDF y *luego* chequear por autotable.
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // *** INICIO DE LA CORRECCIÓN ***
-            // La función autoTable debería estar disponible en 'doc'
-            // si el plugin se cargó correctamente.
-            if (typeof doc.autoTable === 'undefined') {
-                // Este es el error real.
-                console.error("Error: El plugin jsPDF-AutoTable no está cargado o no se adjuntó a jsPDF.");
+            // Comprobar si 'doc.autoTable' es una *función*.
+            if (typeof doc.autoTable !== 'function') {
+                console.error("Error: El plugin jsPDF-AutoTable no se adjuntó a jsPDF.");
                 showStatusMessage("Error: El plugin de tablas PDF no cargó.", true);
-                return;
+                return; // Salir si autotable no es una función
             }
-            // *** FIN DE LA CORRECCIÓN ***
             
             // --- INICIO: Marca de Agua ---
             if (logoBase64) {
@@ -1364,6 +1602,7 @@
             const groupedItems = groupItems(table.items);
             let subtotal = 0;
             let discounts = 0;
+            let others = 0; // Para 'Otros'
             const tableBody = [];
             
             for (const name in groupedItems) {
@@ -1371,7 +1610,10 @@
                 
                 if (item.price < 0) {
                     discounts += item.totalPrice; // (ya es negativo)
-                } else {
+                } else if (name === 'Otros') {
+                    others += item.totalPrice; // (es positivo)
+                }
+                else {
                     subtotal += item.totalPrice;
                     tableBody.push([
                         item.quantity.toString(),
@@ -1382,6 +1624,17 @@
                 }
             }
             
+            // Añadir "Otros" a la tabla si existe
+            if (others > 0) {
+                 tableBody.push([
+                    '1',
+                    'Otros Cargos',
+                    formatCurrency(others),
+                    formatCurrency(others)
+                ]);
+            }
+            
+            // Añadir "Descuentos" a la tabla si existe
             if (discounts < 0) {
                 tableBody.push([
                     '1',
@@ -1423,21 +1676,36 @@
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
             
-            if (discounts < 0) {
-                doc.text("Subtotal:", 150, finalY + 10, { align: 'right' });
-                doc.text(formatCurrency(subtotal), 200, finalY + 10, { align: 'right' });
-                
-                doc.text("Descuentos:", 150, finalY + 17, { align: 'right' });
-                doc.text(formatCurrency(discounts), 200, finalY + 17, { align: 'right' });
+            let currentY = finalY + 10;
+
+            // Mostrar Subtotal solo si hay descuentos u otros cargos
+            if (discounts < 0 || others > 0) {
+                doc.text("Subtotal Productos:", 150, currentY, { align: 'right' });
+                doc.text(formatCurrency(subtotal), 200, currentY, { align: 'right' });
+                currentY += 7;
             }
+            
+            if (others > 0) {
+                doc.text("Otros Cargos:", 150, currentY, { align: 'right' });
+                doc.text(formatCurrency(others), 200, currentY, { align: 'right' });
+                currentY += 7;
+            }
+            
+            if (discounts < 0) {
+                doc.text("Descuentos:", 150, currentY, { align: 'right' });
+                doc.text(formatCurrency(discounts), 200, currentY, { align: 'right' });
+                currentY += 7;
+            }
+            
+            currentY += 2; // Espacio extra
 
             doc.setFontSize(16);
-            doc.text("TOTAL:", 150, finalY + 25, { align: 'right' });
-            doc.text(formatCurrency(table.total), 200, finalY + 25, { align: 'right' });
+            doc.text("TOTAL:", 150, currentY, { align: 'right' });
+            doc.text(formatCurrency(table.total), 200, currentY, { align: 'right' });
             
             doc.setFontSize(10);
             doc.setFont('helvetica', 'italic');
-            doc.text("¡Gracias por tu visita!", 105, finalY + 40, { align: 'center' });
+            doc.text("¡Gracias por tu visita!", 105, currentY + 15, { align: 'center' });
             
             const fileName = `Factura-Mesa-${table.name}-${dateStr}.pdf`;
             doc.save(fileName);
@@ -1481,6 +1749,8 @@
             
             const indicator = document.getElementById('active-table-indicator');
             const indicatorName = document.getElementById('active-table-name');
+            // AÑADIDO: Sincronizar el atajo
+            const activeTableSelect = document.getElementById('active-table-select');
 
             // Quitar clase 'active' de la mesa anterior
             if (oldActiveId && oldActiveId !== tableId) {
@@ -1501,9 +1771,13 @@
                         indicator.classList.remove('hidden');
                     }
                  }
+                 // Sincronizar el atajo
+                 activeTableSelect.value = tableId;
             } else {
                 // Si no hay mesa activa, ocultar indicador
                 indicator.classList.add('hidden');
+                // Sincronizar el atajo
+                activeTableSelect.value = "";
             }
         }
 
