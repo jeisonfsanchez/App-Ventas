@@ -6,10 +6,10 @@
     <title>Sanchez's Sport Bar - Cuentas</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- jsPDF (para generar PDF) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- jsPDF AutoTable plugin (para tablas en PDF) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <!-- jsPDF (para generar PDF) - AÑADIDO 'defer' -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+    <!-- jsPDF AutoTable plugin (para tablas en PDF) - AÑADIDO 'defer' -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -38,10 +38,6 @@
             box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
             border-width: 2px;
         }
-        /* Estilo para mesas cerradas (vacías) - Inexistente en esta versión */
-        .table-card:not(.has-items) {
-           /* No se aplica estilo de "atenuado", se crean dinámicamente */
-        }
     </style>
 </head>
 <body class="flex flex-col md:flex-row min-h-screen">
@@ -64,6 +60,12 @@
             <div>
                 <label for="product-quantity" class="block text-sm font-medium text-gray-300 mb-1">Cantidad</label>
                 <input type="number" id="product-quantity" value="1" min="1" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+            </div>
+
+            <!-- Indicador de Mesa Activa -->
+            <div id="active-table-indicator" class="hidden p-3 bg-cyan-900 border border-cyan-700 rounded-lg text-center">
+                <span class="text-sm text-cyan-300">Añadiendo a:</span>
+                <span id="active-table-name" class="font-bold text-lg text-white block"></span>
             </div>
 
             <button id="add-product-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
@@ -181,13 +183,13 @@
                     <label for="audit-table-name" class="block text-sm font-medium text-gray-300 mb-1">Buscar por Nombre</label>
                     <input type="text" id="audit-table-name" placeholder="Nombre de la mesa..." class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2">
                 </div>
-                <!-- CAMBIO: Contenedor para Total y Botón Borrar Todo -->
+                <!-- Contenedor para Total y Botón Borrar Todo -->
                 <div class="flex-shrink-0 mt-4 sm:mt-0 space-y-2">
                     <div class="text-right">
                         <span class="block text-lg font-bold text-green-400">Total Auditado:</span>
                         <span id="audit-total" class="block text-2xl font-bold text-green-400">$0</span>
                     </div>
-                    <!-- AÑADIDO: Botón Borrar Todo (Filtro) -->
+                    <!-- Botón Borrar Todo (Filtro) -->
                     <button id="delete-all-filtered-btn" class="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-lg text-sm">
                         Borrar Todo (Filtro)
                     </button>
@@ -228,7 +230,7 @@
             query,
             where,
             getDocs,
-            writeBatch // AÑADIDO: Para borrado múltiple
+            writeBatch 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- 1. CONFIGURACIÓN Y LISTAS ---
@@ -243,6 +245,15 @@
           appId: "1:929220552051:web:07f97a44d75ddb79e41106",
           measurementId: "G-M9PC2L3XTP"
         };
+        
+        // --- INSTRUCCIONES PARA LA MARCA DE AGUA (Base64) ---
+        // 1. Ve a: https://www.base64-image.de/
+        // 2. Sube tu logo (la imagen .png o .jpg)
+        // 3. Haz clic en "copy image"
+        // 4. Pega el texto larguísimo entre las comillas de abajo.
+        
+        // EJEMPLO: const logoBase64 = "data:image/png;base64,iVBORw0KGgo... (texto largo) ...";
+        const logoBase64 = ""; // <--- ¡PEGA TU TEXTO AQUÍ!
 
         // Lista de Productos
         const products = [
@@ -316,7 +327,7 @@
         // Almacén de datos en memoria para evitar "datos rancios"
         let allTablesData = new Map();
         
-        // AÑADIDO: Almacén para los IDs de los documentos filtrados en auditoría
+        // Almacén para los IDs de los documentos filtrados en auditoría
         let currentAuditFilteredIds = [];
 
         // --- 3. INICIALIZACIÓN DE FIREBASE ---
@@ -630,7 +641,7 @@
                 itemsHtml = '<li class="text-sm text-gray-500 italic">Mesa vacía</li>';
             }
 
-            // CAMBIO: 3 botones (flex-wrap)
+            // 3 botones
             cardElement.innerHTML = `
                 <h3 class="text-xl font-bold mb-2 truncate ${table.items.length > 0 ? 'text-cyan-400' : 'text-gray-400'}">${table.name}</h3>
                 <ul class="mb-3 h-32 overflow-y-auto pr-1">
@@ -641,15 +652,16 @@
                         <span class="text-gray-400 font-medium">TOTAL</span>
                         <span class="text-2xl font-bold text-green-400">${formatCurrency(table.total)}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
+                    <!-- CAMBIO: Botones en 3 columnas -->
+                    <div class="grid grid-cols-3 gap-2">
                         <button class="btn-history bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
                             Historial
                         </button>
                         <button class="btn-pdf bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
                             Factura
                         </button>
-                        <button class="btn-close-table col-span-2 mt-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
-                            Cerrar Mesa
+                        <button class="btn-close-table bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
+                            Cerrar
                         </button>
                     </div>
                 </div>
@@ -672,6 +684,25 @@
                         return;
                     }
                     try {
+                        // *** INICIO DE LA CORRECCIÓN ***
+                        // Comprobar si las librerías están cargadas de forma más robusta
+                        const { jsPDF } = (typeof window.jspdf !== 'undefined') ? window.jspdf : {};
+                        if (typeof jsPDF === 'undefined') {
+                            console.warn("jsPDF no está listo, reintentando en 100ms...");
+                            showStatusMessage("Preparando PDF, un momento...", false);
+                            setTimeout(() => cardElement.querySelector('.btn-pdf').click(), 100);
+                            return;
+                        }
+                        
+                        const testDoc = new jsPDF();
+                        if (typeof testDoc.autoTable === 'undefined') {
+                            console.warn("jsPDF-AutoTable no está listo, reintentando en 100ms...");
+                            showStatusMessage("Preparando tablas PDF...", false);
+                            setTimeout(() => cardElement.querySelector('.btn-pdf').click(), 100);
+                            return;
+                        }
+                        // *** FIN DE LA CORRECCIÓN ***
+
                         generatePDF(freshTable);
                         showStatusMessage("Factura PDF generada.", false);
                     } catch (pdfError) {
@@ -973,7 +1004,7 @@
             const closeBtn = document.getElementById('close-audit-modal-btn');
             const dateInput = document.getElementById('audit-date');
             const nameInput = document.getElementById('audit-table-name');
-            const deleteAllBtn = document.getElementById('delete-all-filtered-btn'); // AÑADIDO
+            const deleteAllBtn = document.getElementById('delete-all-filtered-btn'); 
 
             // Poner la fecha de hoy por defecto
             const today = new Date();
@@ -995,7 +1026,7 @@
             dateInput.addEventListener('change', fetchClosedTables);
             nameInput.addEventListener('input', fetchClosedTables);
             
-            // AÑADIDO: Botón Borrar Todo (Filtro)
+            // Botón Borrar Todo (Filtro)
             deleteAllBtn.addEventListener('click', handleDeleteAllFiltered);
         }
         
@@ -1016,16 +1047,21 @@
                 totalEl.textContent = formatCurrency(0);
                 return;
             }
-
+            
+            // CORRECCIÓN DE FECHA: Asegurarse que la fecha se interpreta en la zona local
+            // y no en UTC, que podría cambiar el día.
             const [year, month, day] = dateStr.split('-').map(Number);
             const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
             const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+            
+            const startISO = startDate.toISOString();
+            const endISO = endDate.toISOString();
 
             try {
                 // Construir la consulta a Firestore
                 const q = query(closedTablesCollectionRef, 
-                    where("closedAt", ">=", startDate.toISOString()),
-                    where("closedAt", "<=", endDate.toISOString())
+                    where("closedAt", ">=", startISO),
+                    where("closedAt", "<=", endISO)
                 );
                 
                 const snapshot = await getDocs(q);
@@ -1041,7 +1077,7 @@
                         return; // Omitir esta mesa
                     }
                     
-                    // AÑADIDO: Guardar ID para borrado
+                    // Guardar ID para borrado
                     currentAuditFilteredIds.push(doc.id); 
                     
                     tablesFound++;
@@ -1078,7 +1114,7 @@
                                 <button data-table-id="${doc.id}" class="btn-view-closed-detail bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
                                     Ver Detalle
                                 </button>
-                                <!-- AÑADIDO: Botón Borrar (Individual) -->
+                                <!-- Botón Borrar (Individual) -->
                                 <button data-table-id="${doc.id}" data-table-name="${table.name}" class="btn-delete-closed-item bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
                                     Borrar
                                 </button>
@@ -1113,7 +1149,7 @@
                     });
                 });
                 
-                // AÑADIDO: Conectar botones "Borrar" (Individual)
+                // Conectar botones "Borrar" (Individual)
                 content.querySelectorAll('.btn-delete-closed-item').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const docId = btn.dataset.tableId;
@@ -1217,7 +1253,7 @@
             }
         }
         
-        // AÑADIDO: Borra una mesa individual de la auditoría
+        // Borra una mesa individual de la auditoría
         async function handleDeleteClosedTable(docId, tableName) {
             if (!confirm(`¿Está seguro que desea BORRAR PERMANENTEMENTE el registro de la mesa "${tableName}"?\n\nEsta acción no se puede deshacer.`)) {
                 return;
@@ -1244,7 +1280,7 @@
             }
         }
         
-        // AÑADIDO: Borra todas las mesas que coinciden con el filtro
+        // Borra todas las mesas que coinciden con el filtro
         async function handleDeleteAllFiltered() {
             if (currentAuditFilteredIds.length === 0) {
                 showStatusMessage("No hay mesas en el filtro actual para borrar.", true);
@@ -1279,8 +1315,51 @@
 
         // Genera el PDF
         function generatePDF(table) {
+            // Asegurarse que las librerías están cargadas
+            if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+                console.error("jsPDF no está cargado.");
+                showStatusMessage("Error: Librería PDF no cargada.", true);
+                return;
+            }
+            
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
+
+            // *** INICIO DE LA CORRECCIÓN ***
+            // La función autoTable debería estar disponible en 'doc'
+            // si el plugin se cargó correctamente.
+            if (typeof doc.autoTable === 'undefined') {
+                // Este es el error real.
+                console.error("Error: El plugin jsPDF-AutoTable no está cargado o no se adjuntó a jsPDF.");
+                showStatusMessage("Error: El plugin de tablas PDF no cargó.", true);
+                return;
+            }
+            // *** FIN DE LA CORRECCIÓN ***
+            
+            // --- INICIO: Marca de Agua ---
+            if (logoBase64) {
+                try {
+                    // Obtener dimensiones de la página
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    const pageHeight = doc.internal.pageSize.getHeight();
+                    
+                    // Añadir la imagen como marca de agua (centrada y con opacidad)
+                    // (Asumimos que la imagen es más o menos cuadrada)
+                    const imgWidth = 100; // Ancho de la marca de agua
+                    const imgHeight = 100; // Alto de la marca de agua
+                    const x = (pageWidth - imgWidth) / 2;
+                    const y = (pageHeight - imgHeight) / 2;
+
+                    doc.saveGraphicsState(); // Guardar estado actual
+                    doc.setGState(new doc.GState({ opacity: 0.1 })); // Aplicar opacidad
+                    doc.addImage(logoBase64, 'PNG', x, y, imgWidth, imgHeight);
+                    doc.restoreGraphicsState(); // Restaurar estado (opacidad completa)
+                
+                } catch (imgError) {
+                    console.error("Error al añadir la marca de agua (Base64 inválido?):", imgError);
+                }
+            }
+            // --- FIN: Marca de Agua ---
             
             const groupedItems = groupItems(table.items);
             let subtotal = 0;
@@ -1395,11 +1474,14 @@
             }, 4000);
         }
         
-        // Establece la mesa activa
+        // Establece la mesa activa y actualiza el indicador
         function setActiveTable(tableId) {
             const oldActiveId = activeTableId;
             activeTableId = tableId;
             
+            const indicator = document.getElementById('active-table-indicator');
+            const indicatorName = document.getElementById('active-table-name');
+
             // Quitar clase 'active' de la mesa anterior
             if (oldActiveId && oldActiveId !== tableId) {
                 const oldCard = document.querySelector(`[data-table-id="${oldActiveId}"]`);
@@ -1408,12 +1490,20 @@
                 }
             }
             
-            // Poner clase 'active' en la mesa nueva
+            // Poner clase 'active' en la mesa nueva y mostrar indicador
             if (tableId) {
                  const newCard = document.querySelector(`[data-table-id="${tableId}"]`);
                  if (newCard) {
                     newCard.classList.add('active');
+                    const freshTable = allTablesData.get(tableId);
+                    if (freshTable) {
+                        indicatorName.textContent = freshTable.name;
+                        indicator.classList.remove('hidden');
+                    }
                  }
+            } else {
+                // Si no hay mesa activa, ocultar indicador
+                indicator.classList.add('hidden');
             }
         }
 
