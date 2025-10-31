@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanchez's Sport Bar - Cuentas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- jsPDF (para generar PDF) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- jsPDF AutoTable plugin (para tablas en PDF) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Gris oscuro */
+            color: #f3f4f6;
+        }
+        /* Estilo para el scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; /* Fondo del scroll */
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; /* Color del scroll */
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; /* Color al pasar el mouse */
+        }
+        /* Estilo para la mesa activa */
+        .table-card.active {
+            border-color: #06b6d4; /* Cian brillante */
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+            border-width: 2px;
+        }
+        /* Estilo para mesas cerradas (vacías) - Inexistente en esta versión */
+        .table-card:not(.has-items) {
+           /* No se aplica estilo de "atenuado", se crean dinámicamente */
+        }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row min-h-screen">
+
+    <!-- Columna Izquierda: Añadir Productos -->
+    <div class="w-full md:w-1/3 lg:w-1/4 bg-gray-900 p-6 flex flex-col md:h-screen md:overflow-y-auto">
+        <h2 class="text-3xl font-bold mb-6 text-white border-b border-gray-700 pb-2">Sanchez's Sport Bar</h2>
+        
+        <!-- Formulario de Productos -->
+        <div class="flex flex-col space-y-4">
+            <h3 class="text-xl font-semibold text-cyan-400">Añadir Producto</h3>
+            
+            <div>
+                <label for="product-select" class="block text-sm font-medium text-gray-300 mb-1">Producto</label>
+                <select id="product-select" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2 text-base focus:ring-cyan-500 focus:border-cyan-500">
+                    <!-- Opciones se generan dinámicamente -->
+                </select>
+            </div>
+
+            <div>
+                <label for="product-quantity" class="block text-sm font-medium text-gray-300 mb-1">Cantidad</label>
+                <input type="number" id="product-quantity" value="1" min="1" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+            </div>
+
+            <button id="add-product-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
+                Añadir a la Mesa
+            </button>
+        </div>
+        
+        <!-- Mensaje de Error/Estado -->
+        <div id="status-message" class="mt-4 text-center"></div>
+
+        <!-- Botón de Auditoría -->
+        <div class="mt-auto pt-6">
+            <button id="show-audit-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
+                Auditoría / Mesas Cerradas
+            </button>
+        </div>
+    </div>
+
+    <!-- Columna Derecha: Mesas y Zonas -->
+    <div class="w-full md:w-2/3 lg:w-3/4 p-6 flex-1 flex flex-col md:h-screen">
+        
+        <!-- Formulario de Abrir Mesa -->
+        <div class="mb-6 p-4 bg-gray-800 rounded-lg shadow-md">
+            <h3 class="text-xl font-semibold text-green-400 mb-3">Abrir Mesa</h3>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <div class="flex-1">
+                    <label for="table-select" class="block text-sm font-medium text-gray-300 mb-1">Mesa Predefinida</label>
+                    <select id="table-select" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2 text-base focus:ring-green-500 focus:border-green-500">
+                        <!-- Opciones de mesas predefinidas -->
+                    </select>
+                </div>
+                
+                <div id="other-table-name-container" class="flex-1" style="display: none;">
+                    <label for="other-table-name" class="block text-sm font-medium text-gray-300 mb-1">Nombre Mesa Eventual</label>
+                    <input type="text" id="other-table-name" placeholder="Ej: Esquina VIP" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2 placeholder-gray-400">
+                </div>
+                
+                <button id="open-table-btn" class="sm:self-end bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 shadow-lg">
+                    Abrir Mesa
+                </button>
+            </div>
+        </div>
+
+        <!-- Contenedor de Mesas Abiertas -->
+        <h2 class="text-2xl font-bold mb-4 text-white">Mesas Abiertas</h2>
+        <div id="tables-grid" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pr-2">
+            <!-- Las mesas se generan dinámicamente aquí -->
+        </div>
+    </div>
+
+    <!-- Modal de Historial -->
+    <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <!-- Cabecera del Modal -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-semibold text-white">Historial de la Mesa: <span id="history-table-name"></span></h3>
+                <button id="close-history-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <!-- Contenido del Modal (Historial) -->
+            <div id="history-content" class="p-6 overflow-y-auto">
+                <!-- El historial se genera aquí -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Zoom (Solo Lectura) -->
+    <div id="zoom-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <!-- Cabecera del Modal -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-semibold text-white">Detalle Mesa: <span id="zoom-table-name"></span></h3>
+                <button id="close-zoom-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <!-- Contenido del Modal (Zoom) -->
+            <div id="zoom-content" class="p-6 overflow-y-auto">
+                <!-- El resumen ampliado se genera aquí -->
+            </div>
+            <!-- Pie del Modal (Total) -->
+            <div class="p-4 border-t border-gray-700 bg-gray-900 rounded-b-lg">
+                <h4 class="text-2xl font-bold text-right text-green-400" id="zoom-total"></h4>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Historial (Solo Lectura - para Auditoría) -->
+    <div id="read-only-history-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <!-- Cabecera del Modal -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-semibold text-white">Detalle de Venta: <span id="ro-history-table-name"></span></h3>
+                <button id="close-ro-history-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <!-- Contenido del Modal (Historial) -->
+            <div id="ro-history-content" class="p-6 overflow-y-auto">
+                <!-- El historial de solo lectura se genera aquí -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Auditoría -->
+    <div id="audit-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-40 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"> <!-- Aumentado a max-w-4xl -->
+            <!-- Cabecera del Modal -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-semibold text-white">Auditoría de Mesas Cerradas</h3>
+                <button id="close-audit-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <!-- Controles de Auditoría -->
+            <div class="p-4 bg-gray-900 flex flex-col sm:flex-row gap-4 items-start">
+                <div class="flex-1 w-full sm:w-auto">
+                    <label for="audit-date" class="block text-sm font-medium text-gray-300 mb-1">Fecha</label>
+                    <input type="date" id="audit-date" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2">
+                </div>
+                <div class="flex-1 w-full sm:w-auto">
+                    <label for="audit-table-name" class="block text-sm font-medium text-gray-300 mb-1">Buscar por Nombre</label>
+                    <input type="text" id="audit-table-name" placeholder="Nombre de la mesa..." class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2">
+                </div>
+                <!-- CAMBIO: Contenedor para Total y Botón Borrar Todo -->
+                <div class="flex-shrink-0 mt-4 sm:mt-0 space-y-2">
+                    <div class="text-right">
+                        <span class="block text-lg font-bold text-green-400">Total Auditado:</span>
+                        <span id="audit-total" class="block text-2xl font-bold text-green-400">$0</span>
+                    </div>
+                    <!-- AÑADIDO: Botón Borrar Todo (Filtro) -->
+                    <button id="delete-all-filtered-btn" class="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-lg text-sm">
+                        Borrar Todo (Filtro)
+                    </button>
+                </div>
+            </div>
+            <!-- Contenido del Modal (Auditoría) -->
+            <div id="audit-content" class="p-6 overflow-y-auto">
+                <!-- El historial de mesas cerradas se genera aquí -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // IMPORTANTE: Se importa setLogLevel desde 'app'
+        import { initializeApp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        
+        // Módulos de Autenticación
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        
+        // Módulos de Firestore
+        import { 
+            getFirestore, 
+            doc, 
+            getDoc,
+            setDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            collection,
+            updateDoc,
+            increment,
+            arrayUnion,
+            arrayRemove,
+            query,
+            where,
+            getDocs,
+            writeBatch // AÑADIDO: Para borrado múltiple
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- 1. CONFIGURACIÓN Y LISTAS ---
+
+        // CAMBIO: Configuración de Firebase HARCODED para prueba externa
+        const firebaseConfig = {
+          apiKey: "AIzaSyCUGWQJDywozNv20i4IACVXaeXyHVpYPqg",
+          authDomain: "ventas-spb.firebaseapp.com",
+          projectId: "ventas-spb",
+          storageBucket: "ventas-spb.firebasestorage.app",
+          messagingSenderId: "929220552051",
+          appId: "1:929220552051:web:07f97a44d75ddb79e41106",
+          measurementId: "G-M9PC2L3XTP"
+        };
+
+        // Lista de Productos
+        const products = [
+            // Cervezas (Ordenadas)
+            { category: "Cervezas", name: "Aguila", price: 3200 },
+            { category: "Cervezas", name: "Poker", price: 3200 },
+            { category: "Cervezas", name: "Light", price: 3500 },
+            { category: "Cervezas", name: "Budwaiser", price: 3200 },
+            { category: "Cervezas", name: "Club", price: 4000 },
+            { category: "Cervezas", name: "Corona", price: 6000 },
+            { category: "Cervezas", name: "Coronita", price: 4000 },
+            { category: "Cervezas", name: "Costeña Negra", price: 3200 },
+            { category: "Cervezas", name: "Costeña Verde", price: 3200 },
+            
+            // RTD (Listos)
+            { category: "RTD (Listos)", name: "Cuates", price: 6000 },
+            { category: "RTD (Listos)", name: "Like", price: 4500 },
+            { category: "RTD (Listos)", name: "Smirnoff Ice", price: 10000 },
+            { category: "RTD (Listos)", name: "Reds", price: 4500 },
+
+            // Licores
+            { category: "Licores", name: "Whiskey Botella", price: 70000 },
+            { category: "Licores", name: "Whiskey 1/2", price: 40000 },
+            { category: "Licores", name: "Whiskey 1/4", price: 55000 },
+            { category: "Licores", name: "Smirnoff Botella", price: 70000 },
+            { category: "Licores", name: "Smirnoff 1/2", price: 40000 },
+            { category: "Licores", name: "Ron 1/2", price: 40000 },
+            { category: "Licores", name: "Nectar Botella", price: 60000 },
+            { category: "Licores", name: "Nectar 1/2", price: 32000 },
+            { category: "Licores", name: "Antioqueño Azul 1/2", price: 38000 },
+            { category: "Licores", name: "Antioqueño Verde 1/2", price: 35000 },
+            { category: "Licores", name: "Amarillo Botella", price: 70000 },
+            { category: "Licores", name: "Amarillo 1/2", price: 40000 },
+            { category: "Licores", name: "Tequila 1/2", price: 70000 },
+            
+            // Bebidas sin alcohol
+            { category: "Sin Alcohol", name: "Pony Malta", price: 3200 },
+            { category: "Sin Alcohol", name: "Hit", price: 3200 },
+            { category: "Sin Alcohol", name: "Sporade", price: 3200 },
+            { category: "Sin Alcohol", name: "Agua", price: 2000 },
+            { category: "Sin Alcohol", name: "Cocacola", price: 3200 },
+            { category: "Sin Alcohol", name: "Latas", price: 3500 },
+            
+            // Snacks
+            { category: "Snacks", name: "Doritos", price: 3200 },
+            { category: "Snacks", name: "Papas", price: 3200 },
+            { category: "Snacks", name: "Detodtito", price: 3500 },
+            { category: "Snacks", name: "Todorico", price: 3500 },
+
+            // Otros
+            { category: "Otros", name: "Mustang", price: 1100 },
+            { category: "Otros", name: "Lucky", price: 1300 },
+
+            // Descuento
+            { category: "Descuento", name: "Descuento", price: 0 } // Precio 0, se usa la cantidad
+        ];
+
+        // Lista de Mesas Predefinidas
+        const predefinedTables = [
+            'Amarillo', 'Verde', 'Azul', 'Roja', 'Barra', 'Ladrillo', 
+            'Sofa', 'Ventana', 'Escalera', 'Reja', 'Entrada', 'TV'
+        ];
+        const otherOptionValue = '--- Otra ---';
+
+        // --- 2. VARIABLES GLOBALES ---
+        let db, auth;
+        let tablesCollectionRef; // Colección de mesas ABIERTAS
+        let closedTablesCollectionRef; // Colección de mesas CERRADAS
+        let activeTableId = null; // ID de la mesa seleccionada
+        
+        // Almacén de datos en memoria para evitar "datos rancios"
+        let allTablesData = new Map();
+        
+        // AÑADIDO: Almacén para los IDs de los documentos filtrados en auditoría
+        let currentAuditFilteredIds = [];
+
+        // --- 3. INICIALIZACIÓN DE FIREBASE ---
+        async function initializeFirebase() {
+            try {
+                // Usamos la configuración proporcionada
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('Debug'); // Habilitar logs detallados
+
+                // Usaremos colecciones de primer nivel, que es lo más común.
+                tablesCollectionRef = collection(db, "tables");
+                closedTablesCollectionRef = collection(db, "closedTables");
+
+                console.log("Ruta de colección ABIERTAS:", tablesCollectionRef.path);
+                console.log("Ruta de colección CERRADAS:", closedTablesCollectionRef.path);
+
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        console.log("Usuario autenticado (anónimo):", user.uid);
+                        // El usuario está listo, ahora podemos cargar la UI y los listeners
+                        loadAppUI();
+                    } else {
+                        console.log("Usuario no autenticado, intentando iniciar sesión...");
+                        // Intentar iniciar sesión (anónimo)
+                        signInUser();
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error fatal al inicializar Firebase:", error);
+                document.body.innerHTML = `<div class='p-8 text-red-400'>Error al conectar con Firebase. Revise la consola (F12). ${error.message}</div>`;
+            }
+        }
+        
+        async function signInUser() {
+            try {
+                // CAMBIO: Para pruebas externas, solo usamos anónimo
+                console.log("Intentando signInAnonymously...");
+                await signInAnonymously(auth);
+                // onAuthStateChanged se disparará automáticamente después de esto
+            } catch (error) {
+                console.error("Falló el inicio de sesión anónimo:", error);
+                document.getElementById('status-message').textContent = `Error crítico de autenticación: ${error.message}`;
+            }
+        }
+        
+        // --- 4. RENDERIZADO DE UI (Productos y Mesas) ---
+        
+        function loadAppUI() {
+            // Cargar la UI solo después de la autenticación exitosa
+            renderProductList();
+            setupOpenTableForm();
+            setupTableListeners();
+            setupAddProductButton();
+            setupHistoryModal();
+            setupZoomModal();
+            setupAuditModal(); // Configurar el nuevo modal de auditoría
+            setupReadOnlyHistoryModal();
+        }
+
+        // Carga la lista de productos en el <select>
+        function renderProductList() {
+            const select = document.getElementById('product-select');
+            select.innerHTML = ''; // Limpiar opciones anteriores
+            
+            const categories = {};
+            products.forEach(p => {
+                if (!categories[p.category]) {
+                    categories[p.category] = [];
+                }
+                categories[p.category].push(p);
+            });
+
+            for (const categoryName in categories) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = categoryName;
+                
+                categories[categoryName].forEach(product => {
+                    const option = document.createElement('option');
+                    option.value = product.name;
+                    // Lógica para mostrar precio
+                    if (product.name === 'Descuento') {
+                        option.textContent = `${product.name} (manual)`;
+                    } else {
+                        option.textContent = `${product.name} - ${formatCurrency(product.price)}`;
+                    }
+                    // Guardamos el precio y nombre en el dataset para fácil acceso
+                    option.dataset.price = product.price;
+                    option.dataset.name = product.name;
+                    optgroup.appendChild(option);
+                });
+                select.appendChild(optgroup);
+            }
+        }
+        
+        // Configura el formulario de "Abrir Mesa"
+        function setupOpenTableForm() {
+            const select = document.getElementById('table-select');
+            const otherContainer = document.getElementById('other-table-name-container');
+            const otherInput = document.getElementById('other-table-name');
+            const openButton = document.getElementById('open-table-btn');
+
+            // Llenar el select
+            predefinedTables.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+            // Añadir la opción "Otra"
+            const otherOption = document.createElement('option');
+            otherOption.value = otherOptionValue;
+            otherOption.textContent = otherOptionValue;
+            select.appendChild(otherOption);
+
+            // Mostrar/ocultar el campo de texto
+            select.addEventListener('change', () => {
+                if (select.value === otherOptionValue) {
+                    otherContainer.style.display = 'block';
+                    otherInput.focus();
+                } else {
+                    otherContainer.style.display = 'none';
+                    otherInput.value = ''; // Limpiar por si acaso
+                }
+            });
+
+            // Acción del botón "Abrir Mesa"
+            openButton.addEventListener('click', async () => {
+                let tableName;
+                if (select.value === otherOptionValue) {
+                    tableName = otherInput.value.trim();
+                } else {
+                    tableName = select.value;
+                }
+
+                if (!tableName) {
+                    showStatusMessage("Debe seleccionar o escribir un nombre para la mesa.", true);
+                    return;
+                }
+                
+                // Usamos el nombre como ID (simplificación)
+                const tableId = tableName.replace(/\s+/g, '-').toLowerCase(); // ID más robusto
+
+                // Intentar crear la mesa en Firestore
+                try {
+                    // Verificamos si la mesa ya existe en las ABIERTAS
+                    const tableDocRef = doc(tablesCollectionRef, tableId);
+                    
+                    await setDoc(tableDocRef, {
+                        id: tableId,
+                        name: tableName,
+                        items: [], // Usar Array para arrayUnion/arrayRemove
+                        total: 0,
+                        createdAt: new Date().toISOString(),
+                        status: 'open' // Estado para auditoría
+                    });
+                    
+                    console.log(`Mesa "${tableName}" abierta.`);
+                    showStatusMessage(`Mesa "${tableName}" abierta.`, false);
+                    
+                    // Limpiar formulario
+                    otherInput.value = '';
+                    select.value = predefinedTables[0]; // Reset al primer item
+                    otherContainer.style.display = 'none';
+                    
+                    // Activar la nueva mesa
+                    setActiveTable(tableId);
+
+                } catch (error) {
+                    console.error("Error al abrir la mesa:", error);
+                    showStatusMessage(`Error al abrir mesa: ${error.message}`, true);
+                }
+            });
+        }
+
+        // --- 5. LÓGICA PRINCIPAL (Listeners y Acciones) ---
+
+        // Escucha los cambios en la colección de mesas
+        function setupTableListeners() {
+            if (!tablesCollectionRef) {
+                console.error("setupTableListeners llamado antes de que tablesCollectionRef esté definido.");
+                return;
+            }
+            
+            onSnapshot(tablesCollectionRef, (snapshot) => {
+                const tablesGrid = document.getElementById('tables-grid');
+                // Guardamos el scroll actual para que no salte
+                const scrollPos = tablesGrid.scrollTop;
+                
+                const currentTableCards = {}; // Para rastrear las mesas en la UI
+                Array.from(tablesGrid.children).forEach(child => {
+                    currentTableCards[child.dataset.tableId] = child;
+                });
+                
+                // Limpiamos el almacén de datos
+                allTablesData.clear();
+
+                snapshot.forEach(doc => {
+                    const table = doc.data();
+                    // Guardamos la versión más fresca
+                    allTablesData.set(table.id, table); 
+                    
+                    // Si la mesa ya está en la UI, la actualizamos
+                    if (currentTableCards[table.id]) {
+                        updateTableCard(currentTableCards[table.id], table);
+                        // La marcamos como procesada
+                        delete currentTableCards[table.id];
+                    } else {
+                        // Si es nueva, la creamos
+                        const card = createTableCard(table);
+                        tablesGrid.appendChild(card);
+                    }
+                });
+
+                // Eliminar mesas de la UI que ya no están en Firestore
+                for (const tableId in currentTableCards) {
+                    currentTableCards[tableId].remove();
+                }
+                
+                // Restauramos el scroll
+                tablesGrid.scrollTop = scrollPos;
+
+                // Si la mesa activa ya no existe, la deseleccionamos
+                if (activeTableId && !allTablesData.has(activeTableId)) {
+                    setActiveTable(null);
+                }
+                
+            }, (error) => {
+                console.error("Error en el listener de onSnapshot:", error);
+                showStatusMessage("Error al sincronizar mesas. Revisa la consola.", true);
+            });
+        }
+        
+        // Crea el HTML de una tarjeta de mesa
+        function createTableCard(table) {
+            const card = document.createElement('div');
+            card.className = `table-card bg-gray-800 p-4 rounded-lg shadow-lg border-2 border-gray-700 transition-all duration-200 cursor-pointer ${table.items.length > 0 ? 'has-items' : ''} ${table.id === activeTableId ? 'active' : ''}`;
+            card.dataset.tableId = table.id;
+
+            // Evento de clic simple para seleccionar
+            card.addEventListener('click', (e) => {
+                // Evitar que el clic en botones seleccione la mesa
+                if (e.target.closest('button')) {
+                    return;
+                }
+                setActiveTable(table.id);
+            });
+            
+            // Evento de doble clic para "Zoom"
+            card.addEventListener('dblclick', (e) => {
+                if (e.target.closest('button')) {
+                    return;
+                }
+                // Usamos el almacén de datos frescos
+                const freshTable = allTablesData.get(table.id);
+                if (freshTable) {
+                    showZoomModal(freshTable);
+                }
+            });
+
+            // Renderizamos el contenido interno
+            renderTableCardContent(card, table);
+
+            return card;
+        }
+
+        // Actualiza el HTML de una tarjeta existente
+        function updateTableCard(card, table) {
+            // Actualizar clases (activo / tiene items)
+            card.classList.toggle('active', table.id === activeTableId);
+            card.classList.toggle('has-items', table.items.length > 0);
+            
+            // Renderizar contenido interno
+            renderTableCardContent(card, table);
+        }
+
+        // Renderiza el contenido interno de la tarjeta (nombre, items, total, botones)
+        function renderTableCardContent(cardElement, table) {
+            
+            // Agrupar productos para el resumen
+            const groupedItems = groupItems(table.items);
+            
+            let itemsHtml = '';
+            if (Object.keys(groupedItems).length > 0) {
+                for (const name in groupedItems) {
+                    const item = groupedItems[name];
+                    const isDiscount = item.price < 0;
+                    
+                    itemsHtml += `
+                        <li class="flex justify-between items-center text-sm py-1 ${isDiscount ? 'text-red-400' : 'text-gray-300'}">
+                            <span>
+                                ${name} 
+                                <span class="font-medium ${isDiscount ? 'text-red-300' : 'text-white'}">x ${item.quantity}</span>
+                            </span>
+                            <span class="font-semibold ${isDiscount ? 'text-red-300' : 'text-white'}">
+                                ${formatCurrency(item.totalPrice)}
+                                
+                                <!-- Botón "x" para eliminar el grupo completo -->
+                                <button data-item-name="${name}" 
+                                        class="btn-delete-group text-red-500 hover:text-red-300 font-bold ml-2 px-1 rounded-full">
+                                    &times;
+                                </button>
+                            </span>
+                        </li>
+                    `;
+                }
+            } else {
+                itemsHtml = '<li class="text-sm text-gray-500 italic">Mesa vacía</li>';
+            }
+
+            // CAMBIO: 3 botones (flex-wrap)
+            cardElement.innerHTML = `
+                <h3 class="text-xl font-bold mb-2 truncate ${table.items.length > 0 ? 'text-cyan-400' : 'text-gray-400'}">${table.name}</h3>
+                <ul class="mb-3 h-32 overflow-y-auto pr-1">
+                    ${itemsHtml}
+                </ul>
+                <div class="border-t border-gray-700 pt-3">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-gray-400 font-medium">TOTAL</span>
+                        <span class="text-2xl font-bold text-green-400">${formatCurrency(table.total)}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button class="btn-history bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
+                            Historial
+                        </button>
+                        <button class="btn-pdf bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
+                            Factura
+                        </button>
+                        <button class="btn-close-table col-span-2 mt-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-all">
+                            Cerrar Mesa
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // --- RECONECTAR EVENTOS ---
+            
+            // Botón Historial
+            cardElement.querySelector('.btn-history').addEventListener('click', () => {
+                const freshTable = allTablesData.get(table.id);
+                if (freshTable) showHistory(freshTable);
+            });
+
+            // Botón Factura (PDF)
+            cardElement.querySelector('.btn-pdf').addEventListener('click', () => {
+                const freshTable = allTablesData.get(table.id);
+                if (freshTable) {
+                    if (freshTable.items.length === 0) {
+                        showStatusMessage("No se puede facturar una mesa vacía.", true);
+                        return;
+                    }
+                    try {
+                        generatePDF(freshTable);
+                        showStatusMessage("Factura PDF generada.", false);
+                    } catch (pdfError) {
+                        console.error("Error al generar PDF:", pdfError);
+                        showStatusMessage(`Error al crear PDF.`, true);
+                    }
+                }
+            });
+
+            // Botón Cerrar Mesa (sin PDF)
+            cardElement.querySelector('.btn-close-table').addEventListener('click', () => {
+                const freshTable = allTablesData.get(table.id);
+                if (freshTable) handleCloseTable(freshTable);
+            });
+            
+            // Botones "x" (Eliminar Grupo)
+            cardElement.querySelectorAll('.btn-delete-group').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const itemName = btn.dataset.itemName;
+                    const freshTable = allTablesData.get(table.id);
+                    if (freshTable) {
+                        handleDeleteGroup(freshTable, itemName);
+                    }
+                });
+            });
+        }
+        
+        // Agrupa items por nombre para el resumen
+        function groupItems(items) {
+            const grouped = {};
+            if (!items || !Array.isArray(items)) {
+                return grouped;
+            }
+            items.forEach(item => {
+                if (!item || typeof item.name === 'undefined') return; // Saltar items inválidos
+                if (!grouped[item.name]) {
+                    grouped[item.name] = {
+                        quantity: 0,
+                        price: item.price,
+                        totalPrice: 0
+                    };
+                }
+                grouped[item.name].quantity += 1; // Cada item es 1 unidad
+                grouped[item.name].totalPrice += item.price;
+            });
+            return grouped;
+        }
+
+        // Configura el botón de "Añadir Producto"
+        function setupAddProductButton() {
+            const btn = document.getElementById('add-product-btn');
+            const select = document.getElementById('product-select');
+            const quantityInput = document.getElementById('product-quantity');
+
+            btn.addEventListener('click', async () => {
+                if (!activeTableId) {
+                    showStatusMessage("Por favor, seleccione una mesa primero.", true);
+                    return;
+                }
+
+                try {
+                    const selectedOption = select.options[select.selectedIndex];
+                    const productName = selectedOption.dataset.name;
+                    const productPrice = parseFloat(selectedOption.dataset.price);
+                    const quantity = parseInt(quantityInput.value, 10);
+                    
+                    if (isNaN(quantity) || quantity < 1) {
+                         showStatusMessage("La cantidad debe ser 1 o más.", true);
+                         return;
+                    }
+                    
+                    const tableDocRef = doc(tablesCollectionRef, activeTableId);
+                    
+                    // Lógica para Descuento
+                    if (productName === 'Descuento') {
+                        const discountAmount = parseFloat(quantityInput.value); // Usamos el valor tal cual
+                        if (isNaN(discountAmount) || discountAmount <= 0) {
+                            showStatusMessage("El monto a descontar debe ser positivo.", true);
+                            return;
+                        }
+
+                        const newItem = {
+                            id: `item-${Date.now()}`,
+                            name: 'Descuento',
+                            price: -discountAmount, // Guardamos como negativo
+                            timestamp: new Date().toISOString()
+                        };
+
+                        await updateDoc(tableDocRef, {
+                            items: arrayUnion(newItem),
+                            total: increment(-discountAmount) // Restamos del total
+                        });
+                        
+                        showStatusMessage(`Descuento de ${formatCurrency(discountAmount)} aplicado.`, false);
+
+                    } else {
+                        // Lógica para productos normales
+                        let itemsToAdd = [];
+                        for (let i = 0; i < quantity; i++) {
+                            itemsToAdd.push({
+                                id: `item-${Date.now()}-${i}`, // ID único por item
+                                name: productName,
+                                price: productPrice,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                        
+                        const totalCost = productPrice * quantity;
+
+                        await updateDoc(tableDocRef, {
+                            items: arrayUnion(...itemsToAdd), // Añadimos todos los items
+                            total: increment(totalCost) // Sumamos el costo total
+                        });
+                        
+                        showStatusMessage(`${quantity} x ${productName} añadido(s).`, false);
+                    }
+                    
+                    // Resetear cantidad a 1
+                    quantityInput.value = "1";
+
+                } catch (error) {
+                    console.error("Error al añadir producto:", error);
+                    showStatusMessage(`Error: ${error.message}`, true);
+                }
+            });
+        }
+        
+        // --- 6. LÓGICA DE MODALES (Historial, Zoom, Auditoría) ---
+
+        // Configura el modal de historial (botón de cerrar)
+        function setupHistoryModal() {
+            document.getElementById('close-history-modal-btn').addEventListener('click', () => {
+                document.getElementById('history-modal').classList.add('hidden');
+            });
+        }
+
+        // Muestra el modal de historial con los datos de la mesa
+        function showHistory(table) {
+            const modal = document.getElementById('history-modal');
+            const content = document.getElementById('history-content');
+            document.getElementById('history-table-name').textContent = table.name;
+            
+            if (!table.items || table.items.length === 0) {
+                content.innerHTML = '<p class="text-gray-400 italic">No hay historial de transacciones para esta mesa.</p>';
+                modal.classList.remove('hidden');
+                return;
+            }
+
+            // Ordenar por timestamp (más reciente primero)
+            const sortedItems = [...table.items].sort((a, b) => {
+                if (!a.timestamp || !b.timestamp) return 0;
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            });
+
+            let html = '<ul class="divide-y divide-gray-700">';
+            sortedItems.forEach(item => {
+                const itemTime = item.timestamp 
+                    ? new Date(item.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : 'Hora desconocida';
+                
+                const isDiscount = item.price < 0;
+                
+                html += `
+                    <li class="flex justify-between items-center py-3">
+                        <div>
+                            <span class="font-semibold ${isDiscount ? 'text-red-300' : 'text-white'}">${item.name}</span>
+                            <span class="block text-sm text-gray-400">${itemTime}</span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-semibold text-lg mr-4 ${isDiscount ? 'text-red-300' : 'text-white'}">${formatCurrency(item.price)}</span>
+                            
+                            <!-- Botón "x" para eliminar item individual -->
+                            <button data-item-id="${item.id}" 
+                                    class="btn-delete-item text-red-500 hover:text-red-300 font-bold text-2xl px-2 rounded-full">
+                                &times;
+                            </button>
+                        </div>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+            content.innerHTML = html;
+            
+            // Conectar botones de eliminar (item individual)
+            content.querySelectorAll('.btn-delete-item').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const itemId = btn.dataset.itemId;
+                    const itemToDelete = table.items.find(i => i.id === itemId);
+                    if (itemToDelete) {
+                        handleDeleteItem(table, itemToDelete);
+                    }
+                });
+            });
+
+            modal.classList.remove('hidden');
+        }
+        
+        // Configura el modal de historial de solo lectura (botón de cerrar)
+        function setupReadOnlyHistoryModal() {
+            document.getElementById('close-ro-history-modal-btn').addEventListener('click', () => {
+                document.getElementById('read-only-history-modal').classList.add('hidden');
+            });
+        }
+
+        // Muestra el modal de historial (SOLO LECTURA - para auditoría)
+        function showReadOnlyHistory(table) {
+            const modal = document.getElementById('read-only-history-modal');
+            const content = document.getElementById('ro-history-content');
+            document.getElementById('ro-history-table-name').textContent = table.name;
+            
+            if (!table.items || table.items.length === 0) {
+                content.innerHTML = '<p class="text-gray-400 italic">No hay historial de transacciones para esta mesa.</p>';
+                modal.classList.remove('hidden');
+                return;
+            }
+
+            // Ordenar por timestamp (más reciente primero)
+            const sortedItems = [...table.items].sort((a, b) => {
+                if (!a.timestamp || !b.timestamp) return 0;
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            });
+
+
+            let html = '<ul class="divide-y divide-gray-700">';
+            sortedItems.forEach(item => {
+                const itemTime = item.timestamp 
+                    ? new Date(item.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : 'Hora desconocida';
+                const isDiscount = item.price < 0;
+                
+                html += `
+                    <li class="flex justify-between items-center py-3">
+                        <div>
+                            <span class="font-semibold ${isDiscount ? 'text-red-300' : 'text-white'}">${item.name}</span>
+                            <span class="block text-sm text-gray-400">${itemTime}</span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-semibold text-lg mr-4 ${isDiscount ? 'text-red-300' : 'text-white'}">${formatCurrency(item.price)}</span>
+                            <!-- Sin botón de eliminar -->
+                        </div>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+            content.innerHTML = html;
+            
+            modal.classList.remove('hidden');
+        }
+
+        // Configura el modal de Zoom (botón de cerrar)
+        function setupZoomModal() {
+            document.getElementById('close-zoom-modal-btn').addEventListener('click', () => {
+                document.getElementById('zoom-modal').classList.add('hidden');
+            });
+        }
+        
+        // Muestra el modal de Zoom (solo lectura, ampliado)
+        function showZoomModal(table) {
+            const modal = document.getElementById('zoom-modal');
+            const content = document.getElementById('zoom-content');
+            document.getElementById('zoom-table-name').textContent = table.name;
+            document.getElementById('zoom-total').textContent = formatCurrency(table.total);
+            
+            const groupedItems = groupItems(table.items);
+            
+            if (Object.keys(groupedItems).length === 0) {
+                content.innerHTML = '<p class="text-gray-400 italic text-lg">Mesa vacía</p>';
+                modal.classList.remove('hidden');
+                return;
+            }
+
+            let html = '<ul class="divide-y divide-gray-700">';
+            for (const name in groupedItems) {
+                const item = groupedItems[name];
+                const isDiscount = item.price < 0;
+                
+                html += `
+                    <li class="flex justify-between items-center py-3">
+                        <span class="text-lg ${isDiscount ? 'text-red-300' : 'text-white'}">
+                            ${name} 
+                            <span class="font-medium">x ${item.quantity}</span>
+                        </span>
+                        <span class="font-semibold text-xl ${isDiscount ? 'text-red-300' : 'text-white'}">
+                            ${formatCurrency(item.totalPrice)}
+                        </span>
+                    </li>
+                `;
+            }
+            html += '</ul>';
+            content.innerHTML = html;
+            
+            modal.classList.remove('hidden');
+        }
+        
+        // Configura el modal de Auditoría
+        function setupAuditModal() {
+            const modal = document.getElementById('audit-modal');
+            const showBtn = document.getElementById('show-audit-btn');
+            const closeBtn = document.getElementById('close-audit-modal-btn');
+            const dateInput = document.getElementById('audit-date');
+            const nameInput = document.getElementById('audit-table-name');
+            const deleteAllBtn = document.getElementById('delete-all-filtered-btn'); // AÑADIDO
+
+            // Poner la fecha de hoy por defecto
+            const today = new Date();
+            today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+            dateInput.value = today.toISOString().split('T')[0];
+
+            // Abrir
+            showBtn.addEventListener('click', () => {
+                modal.classList.remove('hidden');
+                fetchClosedTables(); // Cargar datos al abrir
+            });
+            
+            // Cerrar
+            closeBtn.addEventListener('click', () => {
+                modal.classList.add('hidden');
+            });
+            
+            // Recargar al cambiar filtros
+            dateInput.addEventListener('change', fetchClosedTables);
+            nameInput.addEventListener('input', fetchClosedTables);
+            
+            // AÑADIDO: Botón Borrar Todo (Filtro)
+            deleteAllBtn.addEventListener('click', handleDeleteAllFiltered);
+        }
+        
+        // Busca y muestra las mesas cerradas
+        async function fetchClosedTables() {
+            const content = document.getElementById('audit-content');
+            const totalEl = document.getElementById('audit-total');
+            const dateStr = document.getElementById('audit-date').value;
+            const nameQuery = document.getElementById('audit-table-name').value.trim().toLowerCase();
+            
+            content.innerHTML = '<p class="text-gray-400 italic">Buscando...</p>';
+            
+            // Limpiamos el array de IDs filtrados
+            currentAuditFilteredIds = [];
+            
+            if (!dateStr) {
+                content.innerHTML = '<p class="text-yellow-400">Por favor, seleccione una fecha.</p>';
+                totalEl.textContent = formatCurrency(0);
+                return;
+            }
+
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+            const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+            try {
+                // Construir la consulta a Firestore
+                const q = query(closedTablesCollectionRef, 
+                    where("closedAt", ">=", startDate.toISOString()),
+                    where("closedAt", "<=", endDate.toISOString())
+                );
+                
+                const snapshot = await getDocs(q);
+                let tablesHtml = '<ul class="divide-y divide-gray-700">';
+                let totalAudited = 0;
+                let tablesFound = 0;
+
+                snapshot.forEach(doc => {
+                    const table = doc.data();
+                    
+                    // Filtro manual por nombre
+                    if (nameQuery && !table.name.toLowerCase().includes(nameQuery)) {
+                        return; // Omitir esta mesa
+                    }
+                    
+                    // AÑADIDO: Guardar ID para borrado
+                    currentAuditFilteredIds.push(doc.id); 
+                    
+                    tablesFound++;
+                    totalAudited += table.total;
+                    
+                    const groupedItems = groupItems(table.items);
+                    let itemsDetailHtml = '';
+                    for (const name in groupedItems) {
+                        const item = groupedItems[name];
+                        itemsDetailHtml += `
+                            <li class="flex justify-between text-sm ${item.price < 0 ? 'text-red-400' : 'text-gray-400'}">
+                                <span>${name} x ${item.quantity}</span>
+                                <span>${formatCurrency(item.totalPrice)}</span>
+                            </li>
+                        `;
+                    }
+                    
+                    const closedTime = new Date(table.closedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+                    tablesHtml += `
+                        <li class="py-4" id="audit-item-${doc.id}">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="text-lg font-semibold text-cyan-400">${table.name}</span>
+                                    <span class="block text-sm text-gray-500">Cerrada a las: ${closedTime}</span>
+                                </div>
+                                <span class="text-xl font-bold text-green-400">${formatCurrency(table.total)}</span>
+                            </div>
+                            <ul class="pl-4 border-l border-gray-700 mb-3">
+                                ${itemsDetailHtml}
+                            </ul>
+                            <!-- Botones de Acción para Auditoría -->
+                            <div class="flex gap-2">
+                                <button data-table-id="${doc.id}" class="btn-view-closed-detail bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
+                                    Ver Detalle
+                                </button>
+                                <!-- AÑADIDO: Botón Borrar (Individual) -->
+                                <button data-table-id="${doc.id}" data-table-name="${table.name}" class="btn-delete-closed-item bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
+                                    Borrar
+                                </button>
+                            </div>
+                        </li>
+                    `;
+                });
+                
+                tablesHtml += '</ul>';
+                
+                if (tablesFound === 0) {
+                     content.innerHTML = '<p class="text-gray-400 italic">No se encontraron mesas cerradas para esta fecha o filtro.</p>';
+                } else {
+                    content.innerHTML = tablesHtml;
+                }
+                
+                // Conectar botones de "Ver Detalle"
+                content.querySelectorAll('.btn-view-closed-detail').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const docId = btn.dataset.tableId;
+                        try {
+                            const tableDoc = await getDoc(doc(closedTablesCollectionRef, docId));
+                            if (tableDoc.exists()) {
+                                showReadOnlyHistory(tableDoc.data());
+                            } else {
+                                showStatusMessage("No se encontró el detalle de esa mesa.", true);
+                            }
+                        } catch (error) {
+                            console.error("Error al obtener detalle de mesa cerrada:", error);
+                            showStatusMessage("Error al cargar detalle.", true);
+                        }
+                    });
+                });
+                
+                // AÑADIDO: Conectar botones "Borrar" (Individual)
+                content.querySelectorAll('.btn-delete-closed-item').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const docId = btn.dataset.tableId;
+                        const tableName = btn.dataset.tableName;
+                        handleDeleteClosedTable(docId, tableName);
+                    });
+                });
+                
+                totalEl.textContent = formatCurrency(totalAudited);
+
+            } catch (error) {
+                console.error("Error al buscar mesas cerradas:", error);
+                content.innerHTML = `<p class="text-red-400">Error al cargar auditoría: ${error.message}</p>`;
+            }
+        }
+        
+
+        // --- 7. ACCIONES (Eliminar, Cerrar, PDF) ---
+
+        // Elimina un item individual (desde el historial)
+        async function handleDeleteItem(table, itemToDelete) {
+            try {
+                const tableDocRef = doc(tablesCollectionRef, table.id);
+                
+                await updateDoc(tableDocRef, {
+                    items: arrayRemove(itemToDelete),
+                    total: increment(-itemToDelete.price) // Restamos el precio
+                });
+                
+                showStatusMessage(`Item "${itemToDelete.name}" eliminado.`, false);
+                
+                const freshTable = allTablesData.get(table.id);
+                if (freshTable) {
+                    if (!document.getElementById('history-modal').classList.contains('hidden')) {
+                        showHistory(freshTable);
+                    }
+                } else {
+                    document.getElementById('history-modal').classList.add('hidden');
+                }
+
+            } catch (error) {
+                console.error("Error al eliminar item:", error);
+                showStatusMessage(`Error al eliminar: ${error.message}`, true);
+            }
+        }
+        
+        // Elimina un grupo completo de items (desde la tarjeta)
+        async function handleDeleteGroup(table, itemName) {
+            
+            const itemsToKeep = table.items.filter(item => item.name !== itemName);
+            const newTotal = itemsToKeep.reduce((sum, item) => sum + item.price, 0);
+
+            try {
+                const tableDocRef = doc(tablesCollectionRef, table.id);
+                
+                await updateDoc(tableDocRef, {
+                    items: itemsToKeep,
+                    total: newTotal
+                });
+                
+                showStatusMessage(`Todos los "${itemName}" eliminados de la mesa.`, false);
+
+            } catch (error) {
+                console.error("Error al eliminar grupo:", error);
+                showStatusMessage(`Error al eliminar: ${error.message}`, true);
+            }
+        }
+        
+        // Cierra la mesa (SIN PDF) y la mueve a "closedTables"
+        async function handleCloseTable(table) {
+            
+            if (table.items.length === 0) {
+                if (!confirm(`La mesa "${table.name}" está vacía.\n¿Desea cerrarla de todas formas?`)) {
+                    return;
+                }
+            } else {
+                 if (!confirm(`¿Desea CERRAR la mesa "${table.name}"?\n\nTotal: ${formatCurrency(table.total)}`)) {
+                    return;
+                }
+            }
+
+            // 1. Mover a "closedTables"
+            try {
+                // Creamos un nuevo documento en "closedTables"
+                const closedDocRef = doc(closedTablesCollectionRef, `${table.id}-${Date.now()}`); // ID único
+                await setDoc(closedDocRef, {
+                    ...table, // Copiamos todos los datos
+                    status: 'closed',
+                    closedAt: new Date().toISOString()
+                });
+                
+                // 2. Eliminar de "tables" (abiertas)
+                const tableDocRef = doc(tablesCollectionRef, table.id);
+                await deleteDoc(tableDocRef);
+                
+                showStatusMessage(`Mesa "${table.name}" cerrada.`, false);
+
+            } catch (dbError) {
+                console.error("Error al cerrar la mesa en DB:", dbError);
+                showStatusMessage(`Error al cerrar la mesa en la base de datos.`, true);
+            }
+        }
+        
+        // AÑADIDO: Borra una mesa individual de la auditoría
+        async function handleDeleteClosedTable(docId, tableName) {
+            if (!confirm(`¿Está seguro que desea BORRAR PERMANENTEMENTE el registro de la mesa "${tableName}"?\n\nEsta acción no se puede deshacer.`)) {
+                return;
+            }
+            
+            try {
+                const docRef = doc(closedTablesCollectionRef, docId);
+                await deleteDoc(docRef);
+                
+                showStatusMessage(`Mesa "${tableName}" borrada de la auditoría.`, false);
+                
+                // Opcional: remover el elemento de la UI sin recargar
+                const itemEl = document.getElementById(`audit-item-${docId}`);
+                if (itemEl) {
+                    itemEl.remove();
+                }
+                
+                // Recargar la auditoría para que el total se actualice
+                fetchClosedTables();
+
+            } catch (error) {
+                console.error("Error al borrar mesa de auditoría:", error);
+                showStatusMessage("Error al borrar registro.", true);
+            }
+        }
+        
+        // AÑADIDO: Borra todas las mesas que coinciden con el filtro
+        async function handleDeleteAllFiltered() {
+            if (currentAuditFilteredIds.length === 0) {
+                showStatusMessage("No hay mesas en el filtro actual para borrar.", true);
+                return;
+            }
+            
+            if (!confirm(`¿Está seguro que desea BORRAR PERMANENTEMENTE los ${currentAuditFilteredIds.length} registros que coinciden con el filtro?\n\nEsta acción no se puede deshacer.`)) {
+                return;
+            }
+
+            try {
+                // Usamos un "batch write" para borrar todos los documentos en una sola operación
+                const batch = writeBatch(db);
+                
+                currentAuditFilteredIds.forEach(docId => {
+                    const docRef = doc(closedTablesCollectionRef, docId);
+                    batch.delete(docRef);
+                });
+                
+                await batch.commit();
+                
+                showStatusMessage(`${currentAuditFilteredIds.length} registros borrados.`, false);
+                
+                // Recargamos la lista de auditoría
+                fetchClosedTables();
+
+            } catch (error) {
+                console.error("Error en borrado múltiple:", error);
+                showStatusMessage("Error al borrar los registros.", true);
+            }
+        }
+
+        // Genera el PDF
+        function generatePDF(table) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            const groupedItems = groupItems(table.items);
+            let subtotal = 0;
+            let discounts = 0;
+            const tableBody = [];
+            
+            for (const name in groupedItems) {
+                const item = groupedItems[name];
+                
+                if (item.price < 0) {
+                    discounts += item.totalPrice; // (ya es negativo)
+                } else {
+                    subtotal += item.totalPrice;
+                    tableBody.push([
+                        item.quantity.toString(),
+                        name,
+                        formatCurrency(item.price), // Precio Unitario
+                        formatCurrency(item.totalPrice) // Precio Total
+                    ]);
+                }
+            }
+            
+            if (discounts < 0) {
+                tableBody.push([
+                    '1',
+                    'Descuentos Aplicados',
+                    formatCurrency(discounts),
+                    formatCurrency(discounts)
+                ]);
+            }
+
+            // --- Contenido del PDF ---
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('es-CO');
+            const timeStr = today.toLocaleTimeString('es-CO');
+            
+            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Sanchez's Sport Bar", 105, 20, { align: 'center' });
+            
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            doc.text("Factura de Venta", 105, 30, { align: 'center' });
+
+            doc.setFontSize(10);
+            doc.text(`Mesa: ${table.name}`, 20, 40);
+            doc.text(`Fecha: ${dateStr}`, 20, 45);
+            doc.text(`Hora: ${timeStr}`, 20, 50);
+
+            doc.autoTable({
+                startY: 60,
+                head: [['Cant.', 'Producto', 'P. Unitario', 'Total']],
+                body: tableBody,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 30, 30] }
+            });
+
+            // --- Totales ---
+            const finalY = doc.autoTable.previous.finalY;
+            
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            
+            if (discounts < 0) {
+                doc.text("Subtotal:", 150, finalY + 10, { align: 'right' });
+                doc.text(formatCurrency(subtotal), 200, finalY + 10, { align: 'right' });
+                
+                doc.text("Descuentos:", 150, finalY + 17, { align: 'right' });
+                doc.text(formatCurrency(discounts), 200, finalY + 17, { align: 'right' });
+            }
+
+            doc.setFontSize(16);
+            doc.text("TOTAL:", 150, finalY + 25, { align: 'right' });
+            doc.text(formatCurrency(table.total), 200, finalY + 25, { align: 'right' });
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'italic');
+            doc.text("¡Gracias por tu visita!", 105, finalY + 40, { align: 'center' });
+            
+            const fileName = `Factura-Mesa-${table.name}-${dateStr}.pdf`;
+            doc.save(fileName);
+        }
+
+        // --- 8. FUNCIONES UTILITARIAS ---
+
+        // Formatea un número como moneda (Peso Colombiano)
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('es-CO', {
+                style: 'currency',
+                currency: 'COP',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(value);
+        }
+        
+        // Muestra un mensaje temporal en la UI
+        function showStatusMessage(message, isError = false) {
+            const el = document.getElementById('status-message');
+            el.textContent = message;
+            if (isError) {
+                el.className = 'mt-4 text-center text-red-400 animate-pulse';
+            } else {
+                el.className = 'mt-4 text-center text-green-400';
+            }
+            
+            // Borrar después de 4 segundos
+            setTimeout(() => {
+                if (el.textContent === message) {
+                    el.textContent = '';
+                    el.className = 'mt-4 text-center';
+                }
+            }, 4000);
+        }
+        
+        // Establece la mesa activa
+        function setActiveTable(tableId) {
+            const oldActiveId = activeTableId;
+            activeTableId = tableId;
+            
+            // Quitar clase 'active' de la mesa anterior
+            if (oldActiveId && oldActiveId !== tableId) {
+                const oldCard = document.querySelector(`[data-table-id="${oldActiveId}"]`);
+                if (oldCard) {
+                    oldCard.classList.remove('active');
+                }
+            }
+            
+            // Poner clase 'active' en la mesa nueva
+            if (tableId) {
+                 const newCard = document.querySelector(`[data-table-id="${tableId}"]`);
+                 if (newCard) {
+                    newCard.classList.add('active');
+                 }
+            }
+        }
+
+        // --- INICIAR LA APP ---
+        initializeFirebase();
+
+    </script>
+</body>
+</html>
+
