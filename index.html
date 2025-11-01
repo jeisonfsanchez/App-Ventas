@@ -77,6 +77,11 @@
             <button id="add-product-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
                 Añadir a la Mesa
             </button>
+            
+            <!-- CAMBIO: Botón Transferir Mesa -->
+            <button id="transfer-table-btn" class="hidden w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg mt-2">
+                Transferir Mesa
+            </button>
         </div>
         
         <!-- Mensaje de Error/Estado -->
@@ -230,6 +235,45 @@
             </div>
         </div>
     </div>
+    
+    <!-- CAMBIO: Modal de Transferir Mesa -->
+    <div id="transfer-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg">
+            <!-- Cabecera del Modal -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-semibold text-white">Transferir Mesa</h3>
+                <button id="close-transfer-modal-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <!-- Contenido del Modal -->
+            <div class="p-6 space-y-4">
+                <p class="text-gray-300">Mover cuenta de: <strong id="transfer-from-name" class="text-cyan-400"></strong></p>
+                
+                <div>
+                    <label for="transfer-table-select" class="block text-sm font-medium text-gray-300 mb-1">Hacia (Mesa Predefinida)</label>
+                    <select id="transfer-table-select" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2 text-base focus:ring-yellow-500 focus:border-yellow-500">
+                        <!-- Opciones de mesas predefinidas -->
+                    </select>
+                </div>
+                
+                <div id="transfer-other-name-container" class="" style="display: none;">
+                    <label for="transfer-other-name" class="block text-sm font-medium text-gray-300 mb-1">Hacia (Nombre Mesa Eventual)</label>
+                    <input type="text" id="transfer-other-name" placeholder="Ej: Esquina VIP" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2 placeholder-gray-400">
+                </div>
+                
+                <div id="transfer-error-message" class="text-red-400 text-sm"></div>
+
+            </div>
+            <!-- Pie del Modal (Botones) -->
+            <div class="p-4 bg-gray-900 rounded-b-lg flex justify-end gap-4">
+                <button id="transfer-cancel-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                    Cancelar
+                </button>
+                <button id="transfer-ok-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                    Confirmar Transferencia
+                </button>
+            </div>
+        </div>
+    </div>
 
 
     <!-- Firebase SDKs -->
@@ -336,7 +380,7 @@
             // Otros
             { category: "Otros", name: "Mustang", price: 1100 },
             { category: "Otros", name: "Lucky", price: 1300 }, 
-            { category: "Otros", name: "Otros", price: 0 }, // <-- CAMBIO: Añadido "Otros"
+            { category: "Otros", name: "Otros", price: 0 }, 
 
             // Descuento
             { category: "Descuento", name: "Descuento", price: 0 } // Precio 0, se usa la cantidad
@@ -425,13 +469,21 @@
             setupAddProductButton();
             setupHistoryModal();
             setupZoomModal();
-            setupAuditModal(); // Configurar el nuevo modal de auditoría
+            setupAuditModal();
             setupReadOnlyHistoryModal();
-            setupConfirmationModal(); // Configurar modal de confirmación
+            setupConfirmationModal();
+            setupTransferModal(); // <-- CAMBIO: Añadido setup para nuevo modal
             
             // Configurar el listener para el nuevo atajo
             document.getElementById('active-table-select').addEventListener('change', (e) => {
                 setActiveTable(e.target.value);
+            });
+            
+            // CAMBIO: Conectar botón de transferir
+            document.getElementById('transfer-table-btn').addEventListener('click', () => {
+                if (activeTableId) {
+                    showTransferModal();
+                }
             });
         }
 
@@ -1172,6 +1224,51 @@
                 onConfirmAction = null; // Limpiar la acción
             });
         }
+        
+        // CAMBIO: Configura el modal de transferencia
+        function setupTransferModal() {
+            const modal = document.getElementById('transfer-modal');
+            const closeBtn = document.getElementById('close-transfer-modal-btn');
+            const cancelBtn = document.getElementById('transfer-cancel-btn');
+            const okBtn = document.getElementById('transfer-ok-btn');
+            const select = document.getElementById('transfer-table-select');
+            const otherContainer = document.getElementById('transfer-other-name-container');
+            const otherInput = document.getElementById('transfer-other-name');
+            
+            // Llenar el select
+            select.innerHTML = ''; // Limpiar
+            predefinedTables.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+            // Añadir la opción "Otra"
+            const otherOption = document.createElement('option');
+            otherOption.value = otherOptionValue;
+            otherOption.textContent = otherOptionValue;
+            select.appendChild(otherOption);
+            
+            // Mostrar/ocultar el campo de texto "Otra"
+            select.addEventListener('change', () => {
+                if (select.value === otherOptionValue) {
+                    otherContainer.style.display = 'block';
+                    otherInput.focus();
+                } else {
+                    otherContainer.style.display = 'none';
+                    otherInput.value = ''; // Limpiar
+                }
+            });
+            
+            // Botones de cerrar/cancelar
+            closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+            cancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
+            
+            // Botón de Confirmar Transferencia
+            okBtn.addEventListener('click', () => {
+                handleTransferTable();
+            });
+        }
 
         /**
          * Muestra el modal de confirmación
@@ -1187,6 +1284,31 @@
             onConfirmAction = onConfirm; // Guardar la acción a ejecutar
             
             modal.classList.remove('hidden'); // Mostrar el modal
+        }
+        
+        // CAMBIO: Muestra el modal de transferencia
+        function showTransferModal() {
+            const modal = document.getElementById('transfer-modal');
+            const fromNameEl = document.getElementById('transfer-from-name');
+            const select = document.getElementById('transfer-table-select');
+            const otherContainer = document.getElementById('transfer-other-name-container');
+            const otherInput = document.getElementById('transfer-other-name');
+            const errorEl = document.getElementById('transfer-error-message');
+            
+            const currentTable = allTablesData.get(activeTableId);
+            if (!currentTable) {
+                showStatusMessage("No hay mesa activa para transferir.", true);
+                return;
+            }
+            
+            // Resetear el modal
+            fromNameEl.textContent = currentTable.name;
+            select.value = predefinedTables[0]; // Reset al primer item
+            otherContainer.style.display = 'none';
+            otherInput.value = '';
+            errorEl.textContent = '';
+            
+            modal.classList.remove('hidden');
         }
         
         // Busca y muestra las mesas cerradas
@@ -1277,9 +1399,13 @@
                                 ${itemsDetailHtml}
                             </ul>
                             <!-- Botones de Acción para Auditoría -->
-                            <div class="flex gap-2">
+                            <div class="flex gap-2 flex-wrap"> <!-- Añadido flex-wrap por si no caben -->
                                 <button data-table-id="${doc.id}" class="btn-view-closed-detail bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
                                     Ver Detalle
+                                </button>
+                                <!-- CAMBIO: Botón Reabrir -->
+                                <button data-table-id="${doc.id}" class="btn-reopen-table bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
+                                    Reabrir
                                 </button>
                                 <!-- Botón Borrar (Individual) -->
                                 <button data-table-id="${doc.id}" data-table-name="${table.name}" class="btn-delete-closed-item bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-3 rounded-lg text-sm transition-all">
@@ -1313,6 +1439,14 @@
                             console.error("Error al obtener detalle de mesa cerrada:", error);
                             showStatusMessage("Error al cargar detalle.", true);
                         }
+                    });
+                });
+
+                // CAMBIO: Conectar botones "Reabrir"
+                content.querySelectorAll('.btn-reopen-table').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const docId = btn.dataset.tableId;
+                        handleReopenTable(docId);
                     });
                 });
                 
@@ -1434,6 +1568,146 @@
             });
         }
         
+        // CAMBIO: Nueva función para Reabrir Mesas
+        async function handleReopenTable(closedDocId) {
+            let tableData;
+            let originalTableId;
+
+            // 1. Obtener los datos de la mesa cerrada y verificar si se puede reabrir
+            try {
+                const closedDocRef = doc(closedTablesCollectionRef, closedDocId);
+                const closedDocSnap = await getDoc(closedDocRef);
+                if (!closedDocSnap.exists()) {
+                    showStatusMessage("No se encontró la mesa cerrada.", true);
+                    return;
+                }
+                tableData = closedDocSnap.data();
+                originalTableId = tableData.id; // Este es el ID original (ej: "amarillo")
+                
+                // Verificar si ya existe una mesa abierta con ese ID
+                const openTableDocRef = doc(tablesCollectionRef, originalTableId);
+                const openTableDocSnap = await getDoc(openTableDocRef);
+                if (openTableDocSnap.exists()) {
+                    showStatusMessage(`Ya existe una mesa abierta llamada "${tableData.name}". No se puede reabrir.`, true);
+                    return;
+                }
+
+            } catch (error) {
+                console.error("Error al buscar mesa para reabrir:", error);
+                showStatusMessage("Error al buscar la mesa.", true);
+                return;
+            }
+
+            // 2. Pedir confirmación
+            const title = `Reabrir Mesa`;
+            const message = `¿Está seguro que desea REABRIR la mesa "${tableData.name}"?`;
+
+            showConfirmationModal(title, message, async () => {
+                // 3. Acción al confirmar
+                try {
+                    // Preparamos los datos para la mesa reabierta
+                    const reOpenedTableData = { ...tableData };
+                    delete reOpenedTableData.closedAt; // Quitar el timestamp de cierre
+                    reOpenedTableData.status = 'open'; // Marcar como abierta
+                    
+                    // Usamos un batch para asegurar que todo sea atómico
+                    const batch = writeBatch(db);
+
+                    // a. Crear la mesa de nuevo en "tables" con su ID ORIGINAL
+                    const openTableRef = doc(tablesCollectionRef, originalTableId);
+                    batch.set(openTableRef, reOpenedTableData);
+
+                    // b. Borrar la mesa de "closedTables"
+                    const closedTableRef = doc(closedTablesCollectionRef, closedDocId);
+                    batch.delete(closedTableRef);
+
+                    // c. Ejecutar el batch
+                    await batch.commit();
+
+                    showStatusMessage(`Mesa "${tableData.name}" ha sido reabierta.`, false);
+                    
+                    // Recargar la auditoría
+                    fetchClosedTables();
+
+                } catch (error) {
+                    console.error("Error al reabrir la mesa:", error);
+                    showStatusMessage("Error al reabrir la mesa.", true);
+                }
+            });
+        }
+        
+        // CAMBIO: Nueva función para Transferir Mesas
+        async function handleTransferTable() {
+            const select = document.getElementById('transfer-table-select');
+            const otherInput = document.getElementById('transfer-other-name');
+            const errorEl = document.getElementById('transfer-error-message');
+            
+            let destinationName;
+            if (select.value === otherOptionValue) {
+                destinationName = otherInput.value.trim();
+            } else {
+                destinationName = select.value;
+            }
+            
+            // Validaciones
+            if (!destinationName) {
+                errorEl.textContent = "Debe seleccionar o escribir un nombre de destino.";
+                return;
+            }
+            const destinationId = destinationName.replace(/\s+/g, '-').toLowerCase();
+            if (destinationId === activeTableId) {
+                errorEl.textContent = "No puede transferir una mesa a sí misma.";
+                return;
+            }
+            
+            // Obtener datos de la mesa actual
+            const currentTableData = allTablesData.get(activeTableId);
+            if (!currentTableData) {
+                errorEl.textContent = "Error: No se encontró la mesa activa.";
+                return;
+            }
+            
+            // 1. Verificar si la mesa de destino YA EXISTE
+            try {
+                const destinationDocRef = doc(tablesCollectionRef, destinationId);
+                const destinationDocSnap = await getDoc(destinationDocRef);
+                
+                if (destinationDocSnap.exists()) {
+                    // La mesa de destino existe, no se puede transferir
+                    errorEl.textContent = `La mesa "${destinationName}" ya está abierta. No se puede transferir.`;
+                    return;
+                }
+                
+                // 2. La mesa de destino NO existe, proceder con la transferencia (renombrar)
+                
+                // Preparamos los nuevos datos
+                const newTableData = { ...currentTableData };
+                newTableData.id = destinationId;
+                newTableData.name = destinationName;
+                
+                // Usar un batch para la operación atómica
+                const batch = writeBatch(db);
+                
+                // a. Crear la nueva mesa
+                batch.set(destinationDocRef, newTableData);
+                
+                // b. Borrar la mesa antigua
+                const oldTableRef = doc(tablesCollectionRef, activeTableId);
+                batch.delete(oldTableRef);
+                
+                // c. Ejecutar
+                await batch.commit();
+                
+                showStatusMessage(`Mesa "${currentTableData.name}" transferida a "${destinationName}".`, false);
+                document.getElementById('transfer-modal').classList.add('hidden');
+                setActiveTable(null); // Deseleccionar
+
+            } catch (error) {
+                console.error("Error al transferir mesa:", error);
+                errorEl.textContent = `Error: ${error.message}`;
+            }
+        }
+
         // Borra una mesa individual de la auditoría
         function handleDeleteClosedTable(docId, tableName) {
             
@@ -1749,8 +2023,8 @@
             
             const indicator = document.getElementById('active-table-indicator');
             const indicatorName = document.getElementById('active-table-name');
-            // AÑADIDO: Sincronizar el atajo
             const activeTableSelect = document.getElementById('active-table-select');
+            const transferBtn = document.getElementById('transfer-table-btn'); // <-- CAMBIO
 
             // Quitar clase 'active' de la mesa anterior
             if (oldActiveId && oldActiveId !== tableId) {
@@ -1769,6 +2043,7 @@
                     if (freshTable) {
                         indicatorName.textContent = freshTable.name;
                         indicator.classList.remove('hidden');
+                        transferBtn.classList.remove('hidden'); // <-- CAMBIO: Mostrar botón
                     }
                  }
                  // Sincronizar el atajo
@@ -1776,6 +2051,7 @@
             } else {
                 // Si no hay mesa activa, ocultar indicador
                 indicator.classList.add('hidden');
+                transferBtn.classList.add('hidden'); // <-- CAMBIO: Ocultar botón
                 // Sincronizar el atajo
                 activeTableSelect.value = "";
             }
