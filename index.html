@@ -74,8 +74,29 @@
                 <span id="active-table-name" class="font-bold text-lg text-white block"></span>
             </div>
 
-            <button id="add-product-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
-                Añadir a la Mesa
+            <!-- CAMBIO: Botón "Añadir a la RONDA" -->
+            <button id="add-to-round-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg">
+                Añadir a la Ronda
+            </button>
+            
+            <!-- CAMBIO: Panel de Ronda Actual -->
+            <div id="current-round-panel" class="mt-2 p-3 bg-gray-800 rounded-lg border border-gray-700 hidden">
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-lg font-semibold text-yellow-400">Ronda Actual</h4>
+                    <button id="cancel-round-btn" class="text-xs text-red-400 hover:text-red-300">&times; Limpiar</button>
+                </div>
+                <ul id="current-round-list" class="max-h-32 overflow-y-auto divide-y divide-gray-700">
+                    <!-- Items de la ronda se añaden aquí -->
+                </ul>
+                <div class="flex justify-between items-center mt-3 pt-2 border-t border-gray-700">
+                    <span class="text-sm text-gray-400">Total Ronda:</span>
+                    <span id="current-round-total" class="font-bold text-lg text-yellow-400">$0</span>
+                </div>
+            </div>
+            
+            <!-- CAMBIO: Nuevo Botón "Registrar Ronda" -->
+            <button id="register-round-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg mt-2">
+                Registrar Ronda en la Mesa
             </button>
             
             <!-- CAMBIO: Botón Transferir Mesa -->
@@ -335,6 +356,10 @@
             { category: "Cervezas", name: "Aguila", price: 3200 },
             { category: "Cervezas", name: "Poker", price: 3200 },
             { category: "Cervezas", name: "Light", price: 3500 },
+            // <!-- CAMBIO: Nuevos productos añadidos -->
+            { category: "Cervezas", name: "Poker B", price: 3500 },
+            { category: "Cervezas", name: "Aguila B", price: 3500 },
+            // <!-- FIN DEL CAMBIO -->
             { category: "Cervezas", name: "Budwaiser", price: 3200 },
             { category: "Cervezas", name: "Club", price: 4000 },
             { category: "Cervezas", name: "Corona", price: 6000 },
@@ -398,6 +423,8 @@
         let tablesCollectionRef; // Colección de mesas ABIERTAS
         let closedTablesCollectionRef; // Colección de mesas CERRADAS
         let activeTableId = null; // ID de la mesa seleccionada
+        
+        let currentRound = []; // CAMBIO: Carrito temporal para la ronda
         
         // Almacén de datos en memoria para evitar "datos rancios"
         let allTablesData = new Map();
@@ -466,13 +493,13 @@
             renderProductList();
             setupOpenTableForm();
             setupTableListeners();
-            setupAddProductButton();
+            setupRoundAndSpecialButtons(); // CAMBIO: Renombrada
             setupHistoryModal();
             setupZoomModal();
-            setupAuditModal();
+            setupAuditModal(); 
             setupReadOnlyHistoryModal();
             setupConfirmationModal();
-            setupTransferModal(); // <-- CAMBIO: Añadido setup para nuevo modal
+            setupTransferModal(); 
             
             // Configurar el listener para el nuevo atajo
             document.getElementById('active-table-select').addEventListener('change', (e) => {
@@ -615,8 +642,6 @@
             
             onSnapshot(tablesCollectionRef, (snapshot) => {
                 const tablesGrid = document.getElementById('tables-grid');
-                // Guardamos el scroll actual para que no salte
-                const scrollPos = tablesGrid.scrollTop;
                 
                 const currentTableCards = {}; // Para rastrear las mesas en la UI
                 Array.from(tablesGrid.children).forEach(child => {
@@ -625,21 +650,29 @@
                 
                 // Limpiamos el almacén de datos
                 allTablesData.clear();
+                
+                let activeCardElement = null; // Para guardar la tarjeta activa
 
                 snapshot.forEach(doc => {
                     const table = doc.data();
                     // Guardamos la versión más fresca
                     allTablesData.set(table.id, table); 
                     
-                    // Si la mesa ya está en la UI, la actualizamos
+                    let card; // Variable para la tarjeta
                     if (currentTableCards[table.id]) {
-                        updateTableCard(currentTableCards[table.id], table);
+                        card = currentTableCards[table.id];
+                        updateTableCard(card, table);
                         // La marcamos como procesada
                         delete currentTableCards[table.id];
                     } else {
                         // Si es nueva, la creamos
-                        const card = createTableCard(table);
+                        card = createTableCard(table);
                         tablesGrid.appendChild(card);
+                    }
+                    
+                    // *** CAMBIO: Si esta es la tarjeta activa, la guardamos ***
+                    if (table.id === activeTableId) {
+                        activeCardElement = card;
                     }
                 });
 
@@ -648,8 +681,12 @@
                     currentTableCards[tableId].remove();
                 }
                 
-                // Restauramos el scroll
-                tablesGrid.scrollTop = scrollPos;
+                // *** CAMBIO: Mover la tarjeta activa al inicio del grid ***
+                if (activeCardElement && tablesGrid.firstChild !== activeCardElement) {
+                    tablesGrid.prepend(activeCardElement);
+                }
+                // *** FIN DEL CAMBIO ***
+
 
                 // Actualizar el atajo
                 updateActiveTableSelect(activeTableId);
@@ -742,11 +779,11 @@
                 for (const name in groupedItems) {
                     const item = groupedItems[name];
                     const isDiscount = item.price < 0;
-                    const isOther = item.price > 0 && (name === 'Otros'); // Identificar "Otros"
+                    const isOther = item.price > 0 && (name === 'Otros');
                     
                     let textColor = 'text-gray-300';
                     if (isDiscount) textColor = 'text-red-400';
-                    if (isOther) textColor = 'text-yellow-400'; // Darle un color distinto a "Otros"
+                    if (isOther) textColor = 'text-yellow-400';
 
                     itemsHtml += `
                         <li class="flex justify-between items-center text-sm py-1 ${textColor}">
@@ -870,15 +907,14 @@
                         totalPrice: 0
                     };
                 }
-                // CAMBIO: Para "Otros", la cantidad es el precio y el precio es 1
-                if(item.name === 'Otros') {
+                
+                // CAMBIO: "Otros" y "Descuento" se agrupan diferente
+                if(item.name === 'Otros' || item.name === 'Descuento') {
                     grouped[item.name].quantity = 1; // Siempre es 1 solo item
-                    grouped[item.name].totalPrice += item.price; // Sumamos el precio
-                } else if (item.name === 'Descuento') {
-                    grouped[item.name].quantity = 1; // Siempre es 1 solo item
-                    grouped[item.name].totalPrice += item.price; // Sumamos el precio (negativo)
+                    grouped[item.name].totalPrice += item.price; // Sumamos el precio (negativo o positivo)
                 }
                 else {
+                    // Productos normales (AHORA INCLUYEN LOS DE LAS RONDAS)
                     grouped[item.name].quantity += 1; // Cada item es 1 unidad
                     grouped[item.name].totalPrice += item.price;
                 }
@@ -886,107 +922,264 @@
             return grouped;
         }
 
-        // Configura el botón de "Añadir Producto"
-        function setupAddProductButton() {
-            const btn = document.getElementById('add-product-btn');
+        // CAMBIO: Muestra el panel de la ronda actual
+        function renderCurrentRound() {
+            const panel = document.getElementById('current-round-panel');
+            const list = document.getElementById('current-round-list');
+            const totalEl = document.getElementById('current-round-total');
+            
+            if (currentRound.length === 0) {
+                panel.classList.add('hidden');
+                list.innerHTML = '';
+                totalEl.textContent = formatCurrency(0);
+                return;
+            }
+            
+            panel.classList.remove('hidden');
+            let listHtml = '';
+            let total = 0;
+            
+            currentRound.forEach((item, index) => {
+                listHtml += `
+                    <li class="flex justify-between items-center text-sm py-1 text-gray-300">
+                        <span>${item.name} <span class="text-white">x ${item.quantity}</span></span>
+                        <span>${formatCurrency(item.price * item.quantity)}</span>
+                    </li>
+                `;
+                total += item.price * item.quantity;
+            });
+            
+            list.innerHTML = listHtml;
+            totalEl.textContent = formatCurrency(total);
+        }
+
+        // CAMBIO: Nueva función solo para "Descuento" y "Otros"
+        async function addSpecialProductToTable(productName, quantity) {
+            if (!activeTableId) {
+                showStatusMessage("Por favor, seleccione una mesa primero.", true);
+                return;
+            }
+            
+            try {
+                const tableDocRef = doc(tablesCollectionRef, activeTableId);
+                
+                if (productName === 'Descuento') {
+                    const discountAmount = parseFloat(quantity);
+                    if (isNaN(discountAmount) || discountAmount <= 0) {
+                        showStatusMessage("El monto a descontar debe ser positivo.", true);
+                        return;
+                    }
+                    const newItem = {
+                        id: `item-${Date.now()}`, name: 'Descuento',
+                        price: -discountAmount, timestamp: new Date().toISOString()
+                        // CAMBIO: Sin roundId
+                    };
+                    await updateDoc(tableDocRef, {
+                        items: arrayUnion(newItem), total: increment(-discountAmount)
+                    });
+                    showStatusMessage(`Descuento de ${formatCurrency(discountAmount)} aplicado.`, false);
+                
+                } else if (productName === 'Otros') {
+                    const additionalAmount = parseFloat(quantity);
+                    if (isNaN(additionalAmount) || additionalAmount <= 0) {
+                        showStatusMessage("El monto a añadir debe ser positivo.", true);
+                        return;
+                    }
+                    const newItem = {
+                        id: `item-${Date.now()}`, name: 'Otros',
+                        price: additionalAmount, timestamp: new Date().toISOString()
+                        // CAMBIO: Sin roundId
+                    };
+                    await updateDoc(tableDocRef, {
+                        items: arrayUnion(newItem), total: increment(additionalAmount)
+                    });
+                    showStatusMessage(`Cargo "Otros" de ${formatCurrency(additionalAmount)} aplicado.`, false);
+                }
+                
+                // Resetear cantidad a 1
+                document.getElementById('product-quantity').value = "1";
+
+            } catch (error) {
+                console.error(`Error al añadir ${productName}:`, error);
+                showStatusMessage(`Error: ${error.message}`, true);
+            }
+        }
+        
+        // CAMBIO: Renombrada de setupAddProductButton a setupRoundAndSpecialButtons
+        function setupRoundAndSpecialButtons() {
+            const addBtn = document.getElementById('add-to-round-btn'); // Renombrado
+            const registerBtn = document.getElementById('register-round-btn'); // Nuevo
+            const cancelBtn = document.getElementById('cancel-round-btn'); // Nuevo
+            
             const select = document.getElementById('product-select');
             const quantityInput = document.getElementById('product-quantity');
 
-            btn.addEventListener('click', async () => {
+            // 1. Botón "Añadir a la Ronda" (antes add-product-btn)
+            addBtn.addEventListener('click', () => {
+                const selectedOption = select.options[select.selectedIndex];
+                const productName = selectedOption.dataset.name;
+                const productPrice = parseFloat(selectedOption.dataset.price);
+                const quantity = parseInt(quantityInput.value, 10);
+                
+                if (isNaN(quantity) || quantity < 1) {
+                     showStatusMessage("La cantidad debe ser 1 o más.", true);
+                     return;
+                }
+                
+                // "Descuento" y "Otros" se aplican directo a la mesa, no a la ronda
+                if (productName === 'Descuento' || productName === 'Otros') {
+                    showConfirmationModal(
+                        `Confirmar Acción: ${productName}`,
+                        `"${productName}" se aplica DIRECTAMENTE a la mesa, no a la ronda.\n\n¿Desea continuar?`,
+                        () => {
+                            // Llamamos a la nueva función que sí habla con Firebase
+                            addSpecialProductToTable(productName, quantity);
+                        }
+                    );
+                    return; // Detenemos la adición a la ronda
+                }
+                
+                // Lógica para productos normales (añadir a la ronda local)
+                const existingItem = currentRound.find(item => item.name === productName);
+                if (existingItem) {
+                    existingItem.quantity += quantity;
+                } else {
+                    currentRound.push({
+                        name: productName,
+                        price: productPrice,
+                        quantity: quantity
+                    });
+                }
+                
+                renderCurrentRound();
+                quantityInput.value = "1"; // Reset
+            });
+
+            // 2. Botón "Registrar Ronda en la Mesa"
+            registerBtn.addEventListener('click', async () => {
                 if (!activeTableId) {
                     showStatusMessage("Por favor, seleccione una mesa primero.", true);
                     return;
                 }
+                if (currentRound.length === 0) {
+                    showStatusMessage("No hay productos en la ronda actual.", true);
+                    return;
+                }
+                
+                // *** CAMBIO: Desempaquetar la ronda en items individuales ***
+                const roundId = `round-${Date.now()}`;
+                const timestamp = new Date().toISOString();
+                let itemsToAdd = [];
+                let totalRoundPrice = 0;
+                
+                currentRound.forEach(item => {
+                    for (let i = 0; i < item.quantity; i++) {
+                        itemsToAdd.push({
+                            id: `item-${Date.now()}-${item.name}-${i}`, // ID único por item
+                            name: item.name,
+                            price: item.price,
+                            timestamp: timestamp, // Misma hora para toda la ronda
+                            roundId: roundId      // Mismo ID de ronda
+                        });
+                    }
+                    totalRoundPrice += item.price * item.quantity;
+                });
+                // *** FIN DEL CAMBIO ***
 
                 try {
-                    const selectedOption = select.options[select.selectedIndex];
-                    const productName = selectedOption.dataset.name;
-                    const productPrice = parseFloat(selectedOption.dataset.price);
-                    const quantity = parseInt(quantityInput.value, 10);
-                    
-                    if (isNaN(quantity) || quantity < 1) {
-                         showStatusMessage("La cantidad debe ser 1 o más.", true);
-                         return;
-                    }
-                    
                     const tableDocRef = doc(tablesCollectionRef, activeTableId);
+                    await updateDoc(tableDocRef, {
+                        items: arrayUnion(...itemsToAdd), // Añadimos todos los items
+                        total: increment(totalRoundPrice)
+                    });
                     
-                    // CAMBIO: Lógica de Descuento y Otros
-                    if (productName === 'Descuento') {
-                        const discountAmount = parseFloat(quantityInput.value); // Usamos el valor tal cual
-                        if (isNaN(discountAmount) || discountAmount <= 0) {
-                            showStatusMessage("El monto a descontar debe ser positivo.", true);
-                            return;
-                        }
-
-                        const newItem = {
-                            id: `item-${Date.now()}`,
-                            name: 'Descuento',
-                            price: -discountAmount, // Guardamos como negativo
-                            timestamp: new Date().toISOString()
-                        };
-
-                        await updateDoc(tableDocRef, {
-                            items: arrayUnion(newItem),
-                            total: increment(-discountAmount) // Restamos del total
-                        });
-                        
-                        showStatusMessage(`Descuento de ${formatCurrency(discountAmount)} aplicado.`, false);
-
-                    } else if (productName === 'Otros') { // <-- CAMBIO: Añadido bloque "Otros"
-                        const additionalAmount = parseFloat(quantityInput.value);
-                        if (isNaN(additionalAmount) || additionalAmount <= 0) {
-                            showStatusMessage("El monto a añadir debe ser positivo.", true);
-                            return;
-                        }
-
-                        const newItem = {
-                            id: `item-${Date.now()}`,
-                            name: 'Otros',
-                            price: additionalAmount, // Guardamos como POSITIVO
-                            timestamp: new Date().toISOString()
-                        };
-
-                        await updateDoc(tableDocRef, {
-                            items: arrayUnion(newItem),
-                            total: increment(additionalAmount) // SUMAMOS al total
-                        });
-                        
-                        showStatusMessage(`Cargo "Otros" de ${formatCurrency(additionalAmount)} aplicado.`, false);
+                    showStatusMessage(`Ronda de ${formatCurrency(totalRoundPrice)} registrada.`, false);
                     
-                    } else {
-                        // Lógica para productos normales
-                        let itemsToAdd = [];
-                        for (let i = 0; i < quantity; i++) {
-                            itemsToAdd.push({
-                                id: `item-${Date.now()}-${i}`, // ID único por item
-                                name: productName,
-                                price: productPrice,
-                                timestamp: new Date().toISOString()
-                            });
-                        }
-                        
-                        const totalCost = productPrice * quantity;
-
-                        await updateDoc(tableDocRef, {
-                            items: arrayUnion(...itemsToAdd), // Añadimos todos los items
-                            total: increment(totalCost) // Sumamos el costo total
-                        });
-                        
-                        showStatusMessage(`${quantity} x ${productName} añadido(s).`, false);
-                    }
-                    
-                    // Resetear cantidad a 1
-                    quantityInput.value = "1";
+                    // Limpiar la ronda
+                    currentRound = [];
+                    renderCurrentRound();
 
                 } catch (error) {
-                    console.error("Error al añadir producto:", error);
+                    console.error("Error al registrar ronda:", error);
                     showStatusMessage(`Error: ${error.message}`, true);
                 }
+            });
+
+            // 3. Botón "Cancelar Ronda"
+            cancelBtn.addEventListener('click', () => {
+                currentRound = [];
+                renderCurrentRound();
             });
         }
         
         // --- 6. LÓGICA DE MODALES (Historial, Zoom, Auditoría) ---
+        
+        // *** CAMBIO: Nueva función para agrupar el historial por transacciones (Rondas) ***
+        function groupHistoryByTransaction(items) {
+            const groupedByTransaction = new Map();
+            
+            // 1. Agrupar items por roundId o (si no tiene) por id
+            items.forEach(item => {
+                const key = item.roundId || item.id; // Agrupar por roundId, o tratar como item individual
+                if (!groupedByTransaction.has(key)) {
+                    groupedByTransaction.set(key, []);
+                }
+                groupedByTransaction.get(key).push(item);
+            });
+
+            // 2. Convertir el Map en un array de "transacciones"
+            const transactions = [];
+            for (const [key, itemsInGroup] of groupedByTransaction.entries()) {
+                const firstItem = itemsInGroup[0];
+                
+                if (firstItem.roundId) {
+                    // Es una RONDA
+                    const roundTotal = itemsInGroup.reduce((sum, i) => sum + i.price, 0);
+                    
+                    // Contar productos dentro de la ronda
+                    const detailsMap = new Map();
+                    itemsInGroup.forEach(i => {
+                        if (!detailsMap.has(i.name)) {
+                            detailsMap.set(i.name, { quantity: 0, price: i.price });
+                        }
+                        detailsMap.get(i.name).quantity += 1;
+                    });
+                    
+                    const details = Array.from(detailsMap.entries()).map(([name, data]) => ({
+                        name: name,
+                        quantity: data.quantity,
+                        price: data.price
+                    }));
+
+                    transactions.push({
+                        id: firstItem.roundId, // ID de la transacción es el roundId
+                        name: "Ronda",
+                        price: roundTotal,
+                        timestamp: firstItem.timestamp,
+                        isRound: true,
+                        details: details, // [{name: "Poker", quantity: 3, price: 3200}, ...]
+                        items: itemsInGroup // Array de items originales para el borrado
+                    });
+                } else {
+                    // Es un item individual (Descuento, Otros)
+                    transactions.push({
+                        id: firstItem.id, // ID de la transacción es el itemId
+                        name: firstItem.name,
+                        price: firstItem.price,
+                        timestamp: firstItem.timestamp,
+                        isRound: false,
+                        details: [], // No tiene detalles
+                        items: itemsInGroup // El array de 1 solo item
+                    });
+                }
+            }
+            
+            // 3. Ordenar las transacciones por fecha
+            return transactions.sort((a, b) => {
+                if (!a.timestamp || !b.timestamp) return 0;
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            });
+        }
 
         // Configura el modal de historial (botón de cerrar)
         function setupHistoryModal() {
@@ -1007,54 +1200,80 @@
                 return;
             }
 
-            // Ordenar por timestamp (más reciente primero)
-            const sortedItems = [...table.items].sort((a, b) => {
-                if (!a.timestamp || !b.timestamp) return 0;
-                return new Date(b.timestamp) - new Date(a.timestamp);
-            });
+            // *** CAMBIO: Usar la nueva función de agrupación ***
+            const sortedTransactions = groupHistoryByTransaction(table.items);
+            // *** FIN DEL CAMBIO ***
 
             let html = '<ul class="divide-y divide-gray-700">';
-            sortedItems.forEach(item => {
-                const itemTime = item.timestamp 
-                    ? new Date(item.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            
+            // Recorremos las transacciones (Rondas o Items únicos)
+            sortedTransactions.forEach(transaction => {
+                const itemTime = transaction.timestamp 
+                    ? new Date(transaction.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     : 'Hora desconocida';
                 
-                const isDiscount = item.price < 0;
-                const isOther = item.price > 0 && (item.name === 'Otros'); // Identificar "Otros"
-                
-                let textColor = 'text-white';
-                if (isDiscount) textColor = 'text-red-300';
-                if (isOther) textColor = 'text-yellow-300';
+                if (transaction.isRound) {
+                    // Es una RONDA
+                    let roundDetailsHtml = '<ul class="pl-4 mt-1 border-l border-gray-600">';
+                    transaction.details.forEach(detail => {
+                        roundDetailsHtml += `<li class="text-sm text-gray-400">${detail.name} x ${detail.quantity} (${formatCurrency(detail.price * detail.quantity)})</li>`;
+                    });
+                    roundDetailsHtml += '</ul>';
 
+                    html += `
+                        <li class="flex justify-between items-start py-3"> <!-- items-start para alinear arriba -->
+                            <div>
+                                <span class="font-semibold text-yellow-300">Ronda</span>
+                                <span class="block text-sm text-gray-400">${itemTime}</span>
+                                ${roundDetailsHtml} <!-- Detalles de la ronda -->
+                            </div>
+                            <div class="flex items-center flex-shrink-0"> <!-- flex-shrink-0 para que no se encoja -->
+                                <span class="font-semibold text-lg mr-4 text-yellow-300">${formatCurrency(transaction.price)}</span>
+                                <button data-item-id="${transaction.id}" 
+                                        class="btn-delete-item text-red-500 hover:text-red-300 font-bold text-2xl px-2 rounded-full">
+                                    &times;
+                                </button>
+                            </div>
+                        </li>
+                    `;
+                } else {
+                    // Es un item normal (Descuento, Otros)
+                    const isDiscount = transaction.price < 0;
+                    const isOther = transaction.price > 0 && (transaction.name === 'Otros');
+                    
+                    let textColor = 'text-white';
+                    if (isDiscount) textColor = 'text-red-300';
+                    if (isOther) textColor = 'text-yellow-300';
 
-                html += `
-                    <li class="flex justify-between items-center py-3">
-                        <div>
-                            <span class="font-semibold ${textColor}">${item.name}</span>
-                            <span class="block text-sm text-gray-400">${itemTime}</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="font-semibold text-lg mr-4 ${textColor}">${formatCurrency(item.price)}</span>
-                            
-                            <!-- Botón "x" para eliminar item individual -->
-                            <button data-item-id="${item.id}" 
-                                    class="btn-delete-item text-red-500 hover:text-red-300 font-bold text-2xl px-2 rounded-full">
-                                &times;
-                            </button>
-                        </div>
-                    </li>
-                `;
+                    html += `
+                        <li class="flex justify-between items-center py-3">
+                            <div>
+                                <span class="font-semibold ${textColor}">${transaction.name}</span>
+                                <span class="block text-sm text-gray-400">${itemTime}</span>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="font-semibold text-lg mr-4 ${textColor}">${formatCurrency(transaction.price)}</span>
+                                <button data-item-id="${transaction.id}" 
+                                        class="btn-delete-item text-red-500 hover:text-red-300 font-bold text-2xl px-2 rounded-full">
+                                    &times;
+                                </button>
+                            </div>
+                        </li>
+                    `;
+                }
             });
             html += '</ul>';
             content.innerHTML = html;
             
-            // Conectar botones de eliminar (item individual)
+            // Conectar botones de eliminar (item individual o ronda)
             content.querySelectorAll('.btn-delete-item').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const itemId = btn.dataset.itemId;
-                    const itemToDelete = table.items.find(i => i.id === itemId);
-                    if (itemToDelete) {
-                        handleDeleteItem(table, itemToDelete);
+                    const transactionId = btn.dataset.itemId; // Este es el roundId o el itemId
+                    
+                    // *** CAMBIO: Encontrar la transacción a borrar ***
+                    const transactionToDelete = sortedTransactions.find(t => t.id === transactionId);
+                    if (transactionToDelete) {
+                        handleDeleteItem(table, transactionToDelete);
                     }
                 });
             });
@@ -1081,38 +1300,57 @@
                 return;
             }
 
-            // Ordenar por timestamp (más reciente primero)
-            const sortedItems = [...table.items].sort((a, b) => {
-                if (!a.timestamp || !b.timestamp) return 0;
-                return new Date(b.timestamp) - new Date(a.timestamp);
-            });
-
+            // *** CAMBIO: Usar la nueva función de agrupación ***
+            const sortedTransactions = groupHistoryByTransaction(table.items);
 
             let html = '<ul class="divide-y divide-gray-700">';
-            sortedItems.forEach(item => {
-                const itemTime = item.timestamp 
-                    ? new Date(item.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            sortedTransactions.forEach(transaction => {
+                const itemTime = transaction.timestamp 
+                    ? new Date(transaction.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     : 'Hora desconocida';
                 
-                const isDiscount = item.price < 0;
-                const isOther = item.price > 0 && (item.name === 'Otros'); // Identificar "Otros"
-                
-                let textColor = 'text-white';
-                if (isDiscount) textColor = 'text-red-300';
-                if (isOther) textColor = 'text-yellow-300';
-                
-                html += `
-                    <li class="flex justify-between items-center py-3">
-                        <div>
-                            <span class="font-semibold ${textColor}">${item.name}</span>
-                            <span class="block text-sm text-gray-400">${itemTime}</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="font-semibold text-lg mr-4 ${textColor}">${formatCurrency(item.price)}</span>
-                            <!-- Sin botón de eliminar -->
-                        </div>
-                    </li>
-                `;
+                if (transaction.isRound) {
+                    let roundDetailsHtml = '<ul class="pl-4 mt-1 border-l border-gray-600">';
+                    transaction.details.forEach(detail => {
+                        roundDetailsHtml += `<li class="text-sm text-gray-400">${detail.name} x ${detail.quantity} (${formatCurrency(detail.price * detail.quantity)})</li>`;
+                    });
+                    roundDetailsHtml += '</ul>';
+
+                    html += `
+                        <li class="flex justify-between items-start py-3">
+                            <div>
+                                <span class="font-semibold text-yellow-300">Ronda</span>
+                                <span class="block text-sm text-gray-400">${itemTime}</span>
+                                ${roundDetailsHtml}
+                            </div>
+                            <div class="flex items-center flex-shrink-0">
+                                <span class="font-semibold text-lg mr-4 text-yellow-300">${formatCurrency(transaction.price)}</span>
+                                <!-- Sin botón de eliminar -->
+                            </div>
+                        </li>
+                    `;
+                } else {
+                    // Item normal (Descuento, Otros)
+                    const isDiscount = transaction.price < 0;
+                    const isOther = transaction.price > 0 && (transaction.name === 'Otros');
+                    
+                    let textColor = 'text-white';
+                    if (isDiscount) textColor = 'text-red-300';
+                    if (isOther) textColor = 'text-yellow-300';
+                    
+                    html += `
+                        <li class="flex justify-between items-center py-3">
+                            <div>
+                                <span class="font-semibold ${textColor}">${transaction.name}</span>
+                                <span class="block text-sm text-gray-400">${itemTime}</span>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="font-semibold text-lg mr-4 ${textColor}">${formatCurrency(transaction.price)}</span>
+                                <!-- Sin botón de eliminar -->
+                            </div>
+                        </li>
+                    `;
+                }
             });
             html += '</ul>';
             content.innerHTML = html;
@@ -1134,6 +1372,7 @@
             document.getElementById('zoom-table-name').textContent = table.name;
             document.getElementById('zoom-total').textContent = formatCurrency(table.total);
             
+            // *** CAMBIO: groupItems ahora hace exactamente lo que queremos para el zoom ***
             const groupedItems = groupItems(table.items);
             
             if (Object.keys(groupedItems).length === 0) {
@@ -1364,6 +1603,7 @@
                     tablesFound++;
                     totalAudited += table.total;
                     
+                    // *** CAMBIO: groupItems ahora funciona aquí también ***
                     const groupedItems = groupItems(table.items);
                     let itemsDetailHtml = '';
                     for (const name in groupedItems) {
@@ -1471,18 +1711,22 @@
 
         // --- 7. ACCIONES (Eliminar, Cerrar, PDF) ---
 
-        // Elimina un item individual (desde el historial)
-        async function handleDeleteItem(table, itemToDelete) {
+        // *** CAMBIO: Elimina una transacción completa (Ronda o Item) desde el historial ***
+        async function handleDeleteItem(table, transactionToDelete) {
             try {
                 const tableDocRef = doc(tablesCollectionRef, table.id);
                 
+                // transactionToDelete.items = array de TODOS los items en esa transacción
+                // transactionToDelete.price = precio total de la transacción
+                
                 await updateDoc(tableDocRef, {
-                    items: arrayRemove(itemToDelete),
-                    total: increment(-itemToDelete.price) // Restamos el precio
+                    items: arrayRemove(...transactionToDelete.items), // Borra todos los items de la ronda/tx
+                    total: increment(-transactionToDelete.price) // Resta el precio total de la ronda/tx
                 });
                 
-                showStatusMessage(`Item "${itemToDelete.name}" eliminado.`, false);
+                showStatusMessage(`Item "${transactionToDelete.name}" eliminado.`, false);
                 
+                // Refrescar el historial si sigue abierto
                 const freshTable = allTablesData.get(table.id);
                 if (freshTable) {
                     if (!document.getElementById('history-modal').classList.contains('hidden')) {
@@ -1498,39 +1742,17 @@
             }
         }
         
-        // Elimina un grupo completo de items (desde la tarjeta)
+        // *** CAMBIO: El botón "x" de la tarjeta ahora SIEMPRE abre el historial ***
         async function handleDeleteGroup(table, itemName) {
             
-            // CAMBIO: Para "Otros" y "Descuento", no podemos borrar por nombre.
-            // Usar el modal de confirmación para esta acción.
-            if (itemName === 'Otros' || itemName === 'Descuento') {
-                showConfirmationModal(
-                    `Confirmar Borrado`,
-                    `Para borrar un item "${itemName}", debe hacerlo desde el "Historial".\n\n¿Desea abrir el historial ahora?`,
-                    () => {
-                        showHistory(table);
-                    }
-                );
-                return;
-            }
-            
-            const itemsToKeep = table.items.filter(item => item.name !== itemName);
-            const newTotal = itemsToKeep.reduce((sum, item) => sum + item.price, 0);
-
-            try {
-                const tableDocRef = doc(tablesCollectionRef, table.id);
-                
-                await updateDoc(tableDocRef, {
-                    items: itemsToKeep,
-                    total: newTotal
-                });
-                
-                showStatusMessage(`Todos los "${itemName}" eliminados de la mesa.`, false);
-
-            } catch (error) {
-                console.error("Error al eliminar grupo:", error);
-                showStatusMessage(`Error al eliminar: ${error.message}`, true);
-            }
+            showConfirmationModal(
+                `Borrar "${itemName}"`,
+                `Para borrar items, debe hacerlo desde el "Historial" para mantener la integridad de las rondas.\n\n¿Desea abrir el historial ahora?`,
+                () => {
+                    showHistory(table);
+                }
+            );
+            return;
         }
         
         // Cierra la mesa (SIN PDF) y la mueve a "closedTables"
@@ -1873,6 +2095,7 @@
             }
             // --- FIN: Marca de Agua ---
             
+            // *** CAMBIO: El groupItems ya hace todo el trabajo ***
             const groupedItems = groupItems(table.items);
             let subtotal = 0;
             let discounts = 0;
@@ -1888,6 +2111,7 @@
                     others += item.totalPrice; // (es positivo)
                 }
                 else {
+                    // Todos los demás productos (incluidos los de las rondas)
                     subtotal += item.totalPrice;
                     tableBody.push([
                         item.quantity.toString(),
@@ -1897,6 +2121,7 @@
                     ]);
                 }
             }
+            // *** FIN DEL CAMBIO ***
             
             // Añadir "Otros" a la tabla si existe
             if (others > 0) {
@@ -2024,7 +2249,7 @@
             const indicator = document.getElementById('active-table-indicator');
             const indicatorName = document.getElementById('active-table-name');
             const activeTableSelect = document.getElementById('active-table-select');
-            const transferBtn = document.getElementById('transfer-table-btn'); // <-- CAMBIO
+            const transferBtn = document.getElementById('transfer-table-btn'); 
 
             // Quitar clase 'active' de la mesa anterior
             if (oldActiveId && oldActiveId !== tableId) {
@@ -2039,11 +2264,22 @@
                  const newCard = document.querySelector(`[data-table-id="${tableId}"]`);
                  if (newCard) {
                     newCard.classList.add('active');
+                    
+                    // *** CAMBIO: Mover físicamente la tarjeta al inicio ***
+                    const tablesGrid = document.getElementById('tables-grid');
+                    // Solo lo movemos si no es ya el primer elemento
+                    if (tablesGrid.firstChild !== newCard) {
+                        tablesGrid.prepend(newCard);
+                    }
+                    // Nos aseguramos de que esté a la vista
+                    newCard.scrollIntoView({ behavior: 'auto', block: 'start' });
+                    // *** FIN DEL CAMBIO ***
+
                     const freshTable = allTablesData.get(tableId);
                     if (freshTable) {
                         indicatorName.textContent = freshTable.name;
                         indicator.classList.remove('hidden');
-                        transferBtn.classList.remove('hidden'); // <-- CAMBIO: Mostrar botón
+                        transferBtn.classList.remove('hidden'); 
                     }
                  }
                  // Sincronizar el atajo
@@ -2051,7 +2287,7 @@
             } else {
                 // Si no hay mesa activa, ocultar indicador
                 indicator.classList.add('hidden');
-                transferBtn.classList.add('hidden'); // <-- CAMBIO: Ocultar botón
+                transferBtn.classList.add('hidden'); 
                 // Sincronizar el atajo
                 activeTableSelect.value = "";
             }
